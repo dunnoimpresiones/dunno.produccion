@@ -904,10 +904,10 @@ async function syncFromSheets(
     orders =
       Array.isArray(result) ? result : (result.orders || []);
 
-    productionDailyV2 =
-      (!Array.isArray(result) && result.production)
-        ? result.production
-        : productionDailyV2;
+    if (!Array.isArray(result) && result.production) {
+      productionDailyV2 = result.production;
+      saveDailyV2(productionDailyV2);
+    }
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
       machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
@@ -1004,187 +1004,30 @@ function cleanMachineOrders() {
 // POST
 // =====================================================
 
-function postAPI(
-  action,
-  data = {}
-) {
-
-  return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-
-      const iframe =
-        document.createElement(
-          "iframe"
-        );
-
-
-      iframe.name =
-        "dunno_post_" +
-        Date.now();
-
-
-      iframe.style.display =
-        "none";
-
-
-      document
-        .body
-        .appendChild(
-          iframe
-        );
-
-
-      const form =
-        document.createElement(
-          "form"
-        );
-
-
-      form.method =
-        "POST";
-
-
-      form.action =
-        CONFIG.API_URL;
-
-
-      form.target =
-        iframe.name;
-
-
-      form.style.display =
-        "none";
-
-
-      addFormField(
-        form,
-        "token",
-        CONFIG.TOKEN
-      );
-
-
-      addFormField(
-        form,
-        "action",
-        action
-      );
-
-
-      Object.keys(data)
-        .forEach(
-          key => {
-
-            addFormField(
-              form,
-              key,
-              data[key]
-            );
-
-          }
-        );
-
-
-      document
-        .body
-        .appendChild(
-          form
-        );
-
-
-      let finished =
-        false;
-
-
-      function finish() {
-
-        if (
-          finished
-        ) {
-
-          return;
-
-        }
-
-
-        finished =
-          true;
-
-
-        setTimeout(
-          () => {
-
-            form.remove();
-
-            iframe.remove();
-
-          },
-          500
-        );
-
-
-        resolve({
-          ok: true
-        });
-
-      }
-
-
-      iframe.onload =
-        function() {
-
-          finish();
-
-        };
-
-
-      iframe.onerror =
-        function() {
-
-          if (
-            finished
-          ) {
-
-            return;
-
-          }
-
-
-          finished =
-            true;
-
-
-          form.remove();
-
-          iframe.remove();
-
-
-          reject(
-            new Error(
-              "No se pudo enviar el pedido"
-            )
-          );
-
-        };
-
-
-      form.submit();
-
-
-      setTimeout(
-        () => {
-
-          finish();
-
+function postAPI(action, data = {}) {
+  return new Promise(async (resolve, reject) => {
+    const payload = new URLSearchParams();
+    payload.set("token", CONFIG.TOKEN);
+    payload.set("action", action);
+    Object.keys(data).forEach(key => payload.set(key, data[key] ?? ""));
+
+    try {
+      // Apps Script acepta este POST simple sin preflight CORS.
+      // No necesitamos leer la respuesta: el backend realiza el guardado.
+      await fetch(CONFIG.API_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
         },
-        5000
-      );
-
+        body: payload.toString()
+      });
+      resolve({ ok: true });
+    } catch (error) {
+      console.error("POST Apps Script:", error);
+      reject(new Error("No se pudo enviar el pedido a Google Sheets"));
     }
-  );
-
+  });
 }
 
 
