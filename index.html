@@ -1,1 +1,45 @@
-<!doctype html><html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><meta name="theme-color" content="#0d1113"/><meta name="description" content="Dunno Producción"/><link rel="manifest" href="/dunno.produccion/manifest.webmanifest"/><title>DUNNO PRODUCCIÓN</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17191b">
+  <meta name="description" content="Panel de producción de Dunno Impresiones">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>Dunno Producción</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-wrap"><div class="brand">DUNNO</div><div class="subtitle">PRODUCCIÓN</div></div>
+    <nav class="main-nav"><a class="nav-active" href="#produccion">▦ &nbsp;Producción agrupada</a><a href="#pedidos">▤ &nbsp;Pedidos</a><a href="#pedidos">▧ &nbsp;Diseños</a><a href="#dashboard">▥ &nbsp;Estadísticas</a><a href="#config">⚙ &nbsp;Configuración</a></nav>
+    <div class="top-actions"><button id="themeToggle" class="icon-btn" onclick="toggleTheme()" title="Cambiar tema">☾</button><button class="icon-btn" onclick="syncFromSheets(true)" title="Sincronizar">↻</button><span class="last-sync">Última actualización<br><strong id="lastSyncTime">--:--:--</strong></span><button class="avatar">FR</button></div>
+  </header>
+
+  <main class="app-shell">
+    <section id="produccion" class="panel production-panel">
+      <div class="section-head production-head"><div><h2>▦ &nbsp;Producción agrupada</h2><p>La app junta automáticamente los mismos diseños.</p></div><div class="section-actions"><button class="sync-btn" onclick="syncFromSheets(true)">↻ &nbsp;Sincronizar</button><button class="primary" onclick="openOrderModal()">＋ &nbsp;Añadir pedido</button></div></div>
+      <section class="stats compact-stats"><div class="stat"><span>📦</span><b id="pendingCount">0</b><small>Pendientes</small></div><div class="stat"><span>🖨️</span><b id="productionCount">0</b><small>En producción</small></div><div class="stat"><span>✅</span><b id="doneCount">0</b><small>Terminados</small></div><div class="stat"><span>🔢</span><b id="unitsCount">0</b><small>Unidades pendientes</small></div></section>
+      <section id="workshopDashboard" class="dashboard-grid"></section>
+      <div id="productionList" class="production-grid"></div>
+    </section>
+
+    <aside class="sidebar-v3">
+      <section class="side-panel" id="pedidos"><div class="side-head"><h2>▣ &nbsp;Pedidos</h2><button class="ghost-btn" onclick="document.getElementById('search').focus()">Ver todos ›</button></div><div class="side-columns"><span>Pedido</span><span>Cantidad</span><span>Estado</span><span>Demora</span></div><div id="sidebarPedidosV3"></div></section>
+      <section class="side-panel" id="dashboard"><div class="side-head"><h2>⌂ &nbsp;Resumen</h2></div><div id="sidebarResumenV3"></div></section>
+    </aside>
+
+    <section class="panel orders-panel" id="config">
+      <div class="section-head"><div><h2>Pedidos</h2><p>Controlá cada pedido y su progreso.</p></div><input id="search" class="search" placeholder="Buscar pedido o cliente..." oninput="render()"></div>
+      <div id="ordersList"></div>
+    </section>
+    <div id="colorPopover" class="color-popover hidden"></div>
+  </main>
+
+  <footer class="app-footer">Dunno Producción v2.0 &nbsp;•&nbsp; Todos los cambios se sincronizan automáticamente &nbsp;☁</footer>
+
+  <div id="modal" class="modal hidden"><div class="modal-card"><button class="close" onclick="closeModal()">×</button><h2>Nuevo pedido</h2><label>Pedido<input id="fOrder" placeholder="Ej. A12"></label><label>Cliente<input id="fClient" placeholder="Nombre del cliente"></label><label>Diseño<input id="fDesign" placeholder="Ej. Margaritas"></label><label>Cantidad<input id="fQty" type="number" min="1" value="25"></label><label>Fecha de entrega<input id="fDate" type="date"></label><label>Prioridad<select id="fPriority"><option value="normal">Normal</option><option value="high">Alta</option></select></label><button class="primary full" onclick="addOrder()">Guardar pedido</button></div></div>
+  <script src="app.js?v=20260904-2200"></script>
+  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}</script>
+</body>
+</html>
