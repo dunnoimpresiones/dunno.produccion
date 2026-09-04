@@ -1,1 +1,80 @@
-<!doctype html><html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><meta name="theme-color" content="#0d1113"/><meta name="description" content="Dunno Producción"/><link rel="manifest" href="/dunno.produccion/manifest.webmanifest"/><title>DUNNO PRODUCCIÓN</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111111">
+  <title>Dunno Producción</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">DUNNO</div>
+      <div class="subtitle">PRODUCCIÓN</div>
+    </div>
+    <button class="primary" onclick="openOrderModal()">+ Nuevo pedido</button>
+  </header>
+
+  <main class="container">
+    <section class="stats">
+      <div class="stat"><span>📦</span><b id="pendingCount">0</b><small>Pendientes</small></div>
+      <div class="stat"><span>🖨️</span><b id="productionCount">0</b><small>En producción</small></div>
+      <div class="stat"><span>✅</span><b id="doneCount">0</b><small>Terminados</small></div>
+      <div class="stat"><span>🔢</span><b id="unitsCount">0</b><small>Unidades pendientes</small></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h2>Producción agrupada</h2>
+          <p>La app junta automáticamente los mismos diseños.</p>
+        </div>
+      </div>
+      <div id="productionList" class="production-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h2>Pedidos</h2>
+          <p>Controlá cada pedido y su progreso.</p>
+        </div>
+        <input id="search" class="search" placeholder="Buscar pedido o cliente..." oninput="render()">
+      </div>
+      <div id="ordersList"></div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" onclick="closeModal()">×</button>
+      <h2>Nuevo pedido</h2>
+      <label>Pedido
+        <input id="fOrder" placeholder="Ej. A12">
+      </label>
+      <label>Cliente
+        <input id="fClient" placeholder="Nombre del cliente">
+      </label>
+      <label>Diseño
+        <input id="fDesign" placeholder="Ej. Margaritas">
+      </label>
+      <label>Cantidad
+        <input id="fQty" type="number" min="1" value="25">
+      </label>
+      <label>Fecha de entrega
+        <input id="fDate" type="date">
+      </label>
+      <label>Prioridad
+        <select id="fPriority">
+          <option value="normal">Normal</option>
+          <option value="high">Alta</option>
+        </select>
+      </label>
+      <button class="primary full" onclick="addOrder()">Guardar pedido</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
