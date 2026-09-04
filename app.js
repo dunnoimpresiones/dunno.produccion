@@ -904,24 +904,10 @@ async function syncFromSheets(
     orders =
       Array.isArray(result) ? result : (result.orders || []);
 
-    if (!Array.isArray(result) && result.production) {
-      const serverProduction = result.production || {};
-      const localProduction = loadDailyV2();
-      const mergedProduction = {};
-      const keys = new Set([
-        ...Object.keys(serverProduction),
-        ...Object.keys(localProduction)
-      ]);
-
-      keys.forEach(k => {
-        const serverUnits = Number(serverProduction[k]?.units ?? serverProduction[k] ?? 0);
-        const localUnits = Number(localProduction[k]?.units ?? localProduction[k] ?? 0);
-        mergedProduction[k] = Math.max(serverUnits, localUnits);
-      });
-
-      productionDailyV2 = mergedProduction;
-      saveDailyV2(productionDailyV2);
-    }
+    productionDailyV2 =
+      (!Array.isArray(result) && result.production)
+        ? result.production
+        : productionDailyV2;
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
       machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
@@ -2428,7 +2414,6 @@ function normalizeMachinesV2(){machines=machines.map((m,i)=>({id:i+1,name:MACHIN
 function saveDailyV2(d){try{localStorage.setItem(DAILY_KEY_V2,JSON.stringify(d))}catch(e){console.error(e)}}
 function loadDailyV2(){try{return JSON.parse(localStorage.getItem(DAILY_KEY_V2)||"{}")}catch{return {}}}
 function todayV2(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
-function dateKeyV2(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function addDailyV2(units){if(units<=0)return;const d=loadDailyV2(),k=todayV2();if(!d[k])d[k]={units:0};d[k].units=(d[k].units||0)+Number(units);saveDailyV2(d)}
 function toggleTheme(){document.documentElement.classList.toggle("dark");localStorage.setItem("dunno_produccion_theme",document.documentElement.classList.contains("dark")?"dark":"light");updateThemeButtonV2()}
 function updateThemeButtonV2(){const b=document.getElementById("themeToggle");if(b)b.textContent=document.documentElement.classList.contains("dark")?"☀":"☾"}
@@ -2440,8 +2425,8 @@ function closeColorPaletteV2(){document.getElementById("colorPopover")?.classLis
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
 
 function queueUpdateV2(order){const id=String(order.id);updateQueuesV2[id]={id:order.id,done:Number(order.done||0)};processQueueV2(id)}
-async function processQueueV2(id){if(savingOrdersV2[id]||!updateQueuesV2[id])return;const data=updateQueuesV2[id];delete updateQueuesV2[id];savingOrdersV2[id]=true;render();try{await postAPI("updateOrder",data)}catch(e){console.error("Guardado en segundo plano:",e)}finally{savingOrdersV2[id]=false;if(updateQueuesV2[id])processQueueV2(id);else render()}}
-function setDone(id,amount){const o=orders.find(x=>String(x.id)===String(id));if(!o)return;const old=Number(o.done||0);let n=amount==="ALL"?Number(o.qty):old+Number(amount);n=Math.max(0,Math.min(Number(o.qty),n));const delta=n-old;if(!delta)return;o.done=n;o.status=n>=Number(o.qty)?"done":n>0?"production":"pending";saveCache();if(delta>0){const k=todayV2();productionDailyV2[k]=Number(productionDailyV2[k]||0)+delta;saveDailyV2(productionDailyV2)}render();queueUpdateV2(o)}
+async function processQueueV2(id){if(savingOrdersV2[id]||!updateQueuesV2[id])return;const data=updateQueuesV2[id];delete updateQueuesV2[id];savingOrdersV2[id]=true;render();try{await postAPI("updateOrder",data);await syncFromSheets(false)}catch(e){console.error("Guardado en segundo plano:",e)}finally{savingOrdersV2[id]=false;if(updateQueuesV2[id])processQueueV2(id);else render()}}
+function setDone(id,amount){const o=orders.find(x=>String(x.id)===String(id));if(!o)return;const old=Number(o.done||0);let n=amount==="ALL"?Number(o.qty):old+Number(amount);n=Math.max(0,Math.min(Number(o.qty),n));const delta=n-old;if(!delta)return;o.done=n;o.status=n>=Number(o.qty)?"done":n>0?"production":"pending";saveCache();if(delta>0){const k=todayV2();productionDailyV2[k]=Number(productionDailyV2[k]||0)+delta}render();queueUpdateV2(o)}
 
 function renderMachineCard(machine){
   const order=orders.find(o=>String(o.id)===String(machine.orderId));
@@ -2488,7 +2473,7 @@ function renderMachineCard(machine){
     <div class="machine-actions-block">${quick}</div>
   </div>`;
 }
-function renderDashboardV2(){const el=document.getElementById("workshopDashboard");if(!el)return;const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;const inactive=machines.length-active;const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);const d=productionDailyV2||{},today=Number(d[todayV2()]||d[todayV2()]?.units||0);const y=new Date();y.setDate(y.getDate()-1);const yk=dateKeyV2(y),yesterday=Number(d[yk]?.units||0);const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;const days=[];for(let i=6;i>=0;i--){const x=new Date();x.setDate(x.getDate()-i);const k=dateKeyV2(x);days.push({k,u:Number(d[k]||d[k]?.units||0),label:i===0?"Hoy":k.slice(8,10)+"/"+k.slice(5,7)})}const max=Math.max(1,...days.map(x=>x.u));el.innerHTML=`<div class="dashboard-card alert-card ${inactive===0?"good":"warning"}"><div><div class="dashboard-title">Estado del taller</div><div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div><div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div></div><div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div></div><div class="dashboard-card"><div class="dashboard-title">Producción de hoy</div><div class="dashboard-big">${today} <small>unidades</small></div><div class="dashboard-meta"><span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span><span>Máquinas <strong>${active}</strong></span>${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}</div><div class="dashboard-message">${motivationV2(today)}</div><div class="dashboard-history">${days.map(x=>`<div class="history-bar" style="height:${Math.max(6,Math.round(x.u/max*40))}px" title="${x.u} unidades"><span class="history-label">${x.label}</span></div>`).join("")}</div></div>`}
+function renderDashboardV2(){const el=document.getElementById("workshopDashboard");if(!el)return;const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;const inactive=machines.length-active;const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);const d=productionDailyV2||{},today=Number(d[todayV2()]||d[todayV2()]?.units||0);const y=new Date();y.setDate(y.getDate()-1);const yk=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0"),yesterday=Number(d[yk]?.units||0);const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;const days=[];for(let i=6;i>=0;i--){const x=new Date();x.setDate(x.getDate()-i);const k=x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");days.push({k,u:Number(d[k]||d[k]?.units||0),label:i===0?"Hoy":k.slice(8,10)+"/"+k.slice(5,7)})}const max=Math.max(1,...days.map(x=>x.u));el.innerHTML=`<div class="dashboard-card alert-card ${inactive===0?"good":"warning"}"><div><div class="dashboard-title">Estado del taller</div><div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div><div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div></div><div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div></div><div class="dashboard-card"><div class="dashboard-title">Producción de hoy</div><div class="dashboard-big">${today} <small>unidades</small></div><div class="dashboard-meta"><span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span><span>Máquinas <strong>${active}</strong></span>${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}</div><div class="dashboard-message">${motivationV2(today)}</div><div class="dashboard-history">${days.map(x=>`<div class="history-bar" style="height:${Math.max(6,Math.round(x.u/max*40))}px" title="${x.u} unidades"><span class="history-label">${x.label}</span></div>`).join("")}</div></div>`}
 const MOTIVATION_KEY_V2="dunno_motivacion_diaria_v2";
 const MOTIVATION_SETS_V2={
   "0":["Dale que arrancamos 🚀","Todo empieza con la primera impresión.","Vamos a poner esas máquinas a trabajar.","Arrancamos tranqui, pero arrancamos 🔥","Hoy se viene jornada de taller.","Primero una impresión, después vemos 😎","Que empiece el ruido de las máquinas.","Día nuevo, impresiones nuevas.","Vamos a llenar esas bobinas de trabajo.","El taller está listo. ¿Y nosotros? 😏","Hoy también se fabrica.","A darle vida a esas ideas.","Las máquinas están esperando 🔥","Ponemos primera y arrancamos.","Un buen día empieza con una impresión."],
@@ -2562,7 +2547,7 @@ function renderWorkshopSidebarV3(){
   r.innerHTML=`<div class="summary-row"><span>Total pedidos</span><strong>${orders.length}</strong></div><div class="summary-row"><span>En producción</span><strong>${production}</strong></div><div class="summary-row"><span>Pendientes</span><strong>${pending}</strong></div><div class="summary-row"><span>Máquinas activas</span><strong>${active} / ${machines.length}</strong></div><div class="summary-row"><span>Producción total</span><strong>${totalDone} / ${totalQty}</strong></div><div class="summary-progress"><div style="width:${totalPct}%"></div></div><div class="summary-percent">${totalPct}%</div>`;
 }
 
-normalizeMachinesV2();productionDailyV2=loadDailyV2();initThemeV2();installMachineStyles();render();setupSearch();syncFromSheets(false);
+normalizeMachinesV2();initThemeV2();installMachineStyles();render();setupSearch();syncFromSheets(false);
 
 // =====================================================
 // SINCRONIZACIÓN AUTOMÁTICA
