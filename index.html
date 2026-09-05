@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="brand-wrap"><div class="brand">DUNNO</div><div class="subtitle">PRODUCCIÓN</div></div>
     <nav class="main-nav"><a class="nav-active" href="#produccion">▦ &nbsp;Producción agrupada</a><a href="#pedidos">▤ &nbsp;Pedidos</a><a href="#pedidos">▧ &nbsp;Diseños</a><a href="#dashboard">▥ &nbsp;Estadísticas</a><a href="#config">⚙ &nbsp;Configuración</a></nav>
-    <div class="top-actions"><button id="themeToggle" class="icon-btn" onclick="toggleTheme()" title="Cambiar tema">☾</button><button class="icon-btn" onclick="syncFromSheets(true)" title="Sincronizar">↻</button><span class="last-sync">Última actualización<br><strong id="lastSyncTime">--:--:--</strong></span><button class="avatar">FR</button></div>
+    <div class="top-actions"><button id="themeToggle" class="icon-btn" onclick="toggleTheme()" title="Cambiar tema">☾</button><button class="icon-btn" onclick="syncFromSheets(true)" title="Sincronizar">↻</button><span class="last-sync">Última actualización<br><strong id="lastSyncTime">--:--:--</strong><small id="syncStatusV2" class="sync-idle">⚪ Sincronizando...</small></span><button class="avatar">FR</button></div>
   </header>
 
   <main class="app-shell">
@@ -39,7 +39,7 @@
   <footer class="app-footer">Dunno Producción v2.0 &nbsp;•&nbsp; Todos los cambios se sincronizan automáticamente &nbsp;☁</footer>
 
   <div id="modal" class="modal hidden"><div class="modal-card"><button class="close" onclick="closeModal()">×</button><h2>Nuevo pedido</h2><label>Pedido<input id="fOrder" placeholder="Ej. A12"></label><label>Cliente<input id="fClient" placeholder="Nombre del cliente"></label><label>Diseño<input id="fDesign" placeholder="Ej. Margaritas"></label><label>Cantidad<input id="fQty" type="number" min="1" value="25"></label><label>Fecha de entrega<input id="fDate" type="date"></label><label>Prioridad<select id="fPriority"><option value="normal">Normal</option><option value="high">Alta</option></select></label><button class="primary full" onclick="addOrder()">Guardar pedido</button></div></div>
-  <script src="app.js?v=20260904-2303"></script>
+  <script src="app.js?v=20260905-batch-sync"></script>
   <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}</script>
 </body>
 </html>
