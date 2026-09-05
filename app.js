@@ -1,4 +1,4 @@
-/*
+//*
   =====================================================
   DUNNO PRODUCCIÓN
   =====================================================
@@ -22,11 +22,8 @@
 
 const CONFIG = {
 
-  API_URL:
-    "https://script.google.com/macros/s/AKfycbyiy6bBWy_SAgy3G5FJuLLulE4S6wXY5L8mmJWp1VedseybXA8OY31KH4x3t6r0V9x05g/exec",
-
-  TOKEN:
-    "Dunno0109"
+  SUPABASE_URL: "https://dmwalqrbsrdjmozwbsll.supabase.co",
+  SUPABASE_KEY: "sb_publishable_dZcHvo7dIpnjbebUEkuzqA_Q9LkKW45"
 
 };
 
@@ -61,7 +58,7 @@ let orders = [];
 
 let machines = [];
 
-// Producción diaria sincronizada con Google Sheets
+// Producción diaria sincronizada con Supabase
 let productionDailyV2 = {};
 let productionTotalV2 = 0;
 
@@ -798,74 +795,72 @@ function installMachineStyles() {
 
 
 // =====================================================
-// GOOGLE SHEETS - GET
+// SUPABASE - READ
 // =====================================================
 
 function getOrdersFromAPI() {
+  return Promise.all([
+    supabaseRequest("pedidos?select=*&order=fecha_creacion.desc"),
+    supabaseRequest("maquinas?select=*&order=nombre.asc"),
+    supabaseRequest("produccion_diaria?select=*&fecha=eq."+encodeURIComponent(todayV2()))
+  ]).then(([remoteOrders, remoteMachines, dailyRows]) => ({
+    orders: remoteOrders.map(normalizeSupabaseOrderV2),
+    production: {},
+    productionToday: Number(dailyRows[0]?.total || 0),
+    machines: remoteMachines.map(normalizeSupabaseMachineV2)
+  }));
+}
 
-  return new Promise(
-    (resolve, reject) => {
-      window.dunnoData = null;
-      const script = document.createElement("script");
-      const callback = "dunnoData_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-      let finished = false;
-      let timeoutId = null;
-      const cleanup = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        script.remove();
-        delete window[callback];
-      };
-      const finish = data => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        console.info("[Sheets] Datos recibidos", data);
-        if (!data) {
-          reject(new Error("Google Apps Script no devolvió datos"));
-          return;
-        }
-        if (!data.ok) {
-          reject(new Error(data.error || "Error de Google Apps Script"));
-          return;
-        }
-        resolve({
-          orders: Array.isArray(data.orders) ? data.orders : [],
-          production: data.production || {},
-          productionToday: Number(data.productionToday ?? data.productionTotal ?? 0),
-          machines: Array.isArray(data.machines) ? data.machines : []
-        });
-      };
-      window[callback] = data => {
-        console.info("[Sheets] Callback ejecutado", callback);
-        window.dunnoData = data;
-        finish(data);
-      };
-      script.onload = () => {
-        console.info("[Sheets] Respuesta recibida, esperando formato legacy si corresponde");
-        if (window.dunnoData) finish(window.dunnoData);
-      };
-      script.onerror = () => {
-        console.error("[Sheets] Error de red al cargar datos", script.src);
-        if (!finished) {
-          finished = true;
-          cleanup();
-          reject(new Error("No se pudo conectar con Google Apps Script"));
-        }
-      };
-      script.src = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
-        "&callback=" + callback + "&_=" + Date.now();
-      console.info("[Sheets] GET iniciado", script.src);
-      document.head.appendChild(script);
-      timeoutId = setTimeout(() => {
-        if (finished) return;
-        console.error("[Sheets] Timeout GET", script.src);
-        finished = true;
-        cleanup();
-        reject(new Error("Google Apps Script no respondió a tiempo"));
-      }, 30000);
-    }
-  );
+async function supabaseRequest(path, options = {}) {
+  const response = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
+    method: options.method || "GET",
+    headers: {
+      apikey: CONFIG.SUPABASE_KEY,
+      Authorization: "Bearer " + CONFIG.SUPABASE_KEY,
+      "Content-Type": "application/json",
+      Prefer: options.prefer || "return=representation"
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!response.ok) {
+    throw new Error(data?.message || data?.hint || text || "Error de Supabase");
+  }
+  return data;
+}
 
+function normalizeSupabaseOrderV2(row) {
+  return {
+    id: String(row.id),
+    number: String(row.numero_pedido || ""),
+    client: String(row.cliente || ""),
+    design: String(row.diseño || ""),
+    details: String(row.detalles || ""),
+    qty: Number(row.cantidad || 0),
+    done: Number(row.progreso || row.producido || 0),
+    status: normalizeOrderStatusV2(row.estado),
+    machine: String(row.maquina || ""),
+    colors: row.colores || "",
+    date: row.fecha_creacion ? String(row.fecha_creacion).slice(0, 10) : "",
+    updated: row.fecha_creacion || ""
+  };
+}
+
+function normalizeSupabaseMachineV2(row) {
+  return {
+    id: MACHINE_NAMES.indexOf(String(row.nombre)) + 1,
+    name: String(row.nombre),
+    orderId: String(row.pedido_id || ""),
+    colors: []
+  };
+}
+
+function normalizeOrderStatusV2(value) {
+  const status = String(value || "").toLowerCase();
+  return status === "completado" || status === "done" ? "done" :
+    status === "iniciado" || status === "production" || status === "en producción" ? "production" : "pending";
 }
 
 
@@ -966,12 +961,12 @@ async function syncFromSheets(
     ) {
 
       alert(
-        "No se pudo sincronizar con Google Sheets.\n\n" +
+        "No se pudo sincronizar con Supabase.\n\n" +
         error.message
       );
 
     }
-    showSyncStatusV2("No se pudo sincronizar con Google Sheets: "+syncErrorMessageV2(error),true);
+    showSyncStatusV2("No se pudo sincronizar con Supabase: "+syncErrorMessageV2(error),true);
 
     return false;
 
@@ -1006,8 +1001,7 @@ function cleanMachineOrders() {
 // POST
 // =====================================================
 
-// Se declara antes de postAPI para que toda llamada POST pueda crear sus
-// campos ocultos, incluso si el archivo se carga parcialmente o se reordena.
+// Compatibility helper retained for the existing UI layer.
 function addFormField(
   form,
   name,
@@ -1038,119 +1032,136 @@ function postAPI(
   action,
   data = {}
 ) {
-  return new Promise(
-    (resolve, reject) => {
-      const iframe = document.createElement("iframe");
-      iframe.name = "dunno_post_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-      iframe.style.display = "none";
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = CONFIG.API_URL;
-      form.target = iframe.name;
-      form.style.display = "none";
-      addFormField(form, "token", CONFIG.TOKEN);
-      addFormField(form, "action", action);
-      Object.keys(data).forEach(key => addFormField(form, key, data[key]));
-      let finished = false;
-      const cleanup = () => {
-        form.remove();
-        iframe.remove();
-      };
-      const finish = (error) => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        if (error) {
-          console.error("[Sheets] Error", {action, message:error.message});
-          reject(error);
-        } else {
-          console.info("[Sheets] Respuesta POST recibida", {action});
-          resolve({ok:true, action});
-        }
-      };
-      iframe.onload = () => setTimeout(() => finish(), 500);
-      iframe.onerror = () => finish(new Error("No se pudo conectar con Google Apps Script"));
-      console.info("[Sheets] Enviando petición POST", {action, url:CONFIG.API_URL});
-      document.body.appendChild(iframe);
-      document.body.appendChild(form);
-      form.submit();
-      setTimeout(() => finish(new Error("Google Apps Script no respondió a tiempo")), 30000);
-    }
-  );
+  if (action === "addOrder") return addOrderSupabaseV2(data);
+  if (action === "updateOrder") return updateOrderSupabaseV2(data);
+  if (action === "updateMachine") return updateMachineSupabaseV2(data);
+  if (action === "updateBatch") return updateBatchSupabaseV2(data);
+  if (action === "deleteOrder") return deleteOrderSupabaseV2(data);
+  return Promise.reject(new Error("Acción no soportada por Supabase: " + action));
+}
 
+async function addOrderSupabaseV2(data) {
+  const existing = await supabaseRequest("operaciones_pedidos?select=pedido_id&operation_id=eq."+encodeURIComponent(data.operationId));
+  if (existing[0]) return {ok:true, action:"addOrder"};
+  const numero = await nextSupabaseOrderNumberV2();
+  const created = await supabaseRequest("pedidos", {
+    method:"POST",
+    body:{
+      numero_pedido:numero,
+      cliente:data.client || "",
+      diseño:data.design || "",
+      detalles:data.product || "",
+      cantidad:Number(data.qty || 0),
+      estado:"pendiente",
+      progreso:0,
+      fecha_creacion:data.date ? new Date(data.date).toISOString() : new Date().toISOString()
+    }
+  });
+  const order = created[0];
+  await supabaseRequest("operaciones_pedidos", {
+    method:"POST",
+    body:{operation_id:data.operationId,pedido_id:order.id}
+  });
+  return {ok:true, action:"addOrder"};
+}
+
+async function nextSupabaseOrderNumberV2() {
+  const rows = await supabaseRequest("pedidos?select=numero_pedido&order=fecha_creacion.desc&limit=1");
+  const current = String(rows[0]?.numero_pedido || "");
+  const month = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"][new Date().getMonth()];
+  const prefix = month + new Date().getFullYear();
+  const sequence = current.indexOf(prefix) === 0 ? Number(current.slice(prefix.length)) + 1 : 1;
+  return prefix + String(sequence).padStart(4,"0");
+}
+
+async function updateOrderSupabaseV2(data) {
+  const id = encodeURIComponent(String(data.id));
+  const localOrder = orders.find(order => String(order.id) === String(data.id));
+  const quantity = Number(data.qty || localOrder?.qty || 0);
+  const status = Number(data.done || 0) > 0 ? (quantity > 0 && Number(data.done) >= quantity ? "completado" : "iniciado") : "pendiente";
+  await supabaseRequest("pedidos?id=eq."+id, {
+    method:"PATCH",
+    body:{progreso:Number(data.done || 0),estado:status,maquina:data.machine || null}
+  });
+  const production = await supabaseRequest("produccion?select=id&pedido_id=eq."+id+"&limit=1");
+  if (production[0]) {
+    await supabaseRequest("produccion?id=eq."+encodeURIComponent(production[0].id), {
+      method:"PATCH",
+      body:{producido:Number(data.done || 0),fecha_fin:status === "completado" ? new Date().toISOString() : null}
+    });
+  }
+  await refreshSupabaseDailyTotalV2();
+  return {ok:true,action:"updateOrder"};
+}
+
+async function updateMachineSupabaseV2(data) {
+  const machine = machines.find(item => Number(item.id) === Number(data.machineId));
+  if (!machine) throw new Error("Máquina no encontrada");
+  const rows = await supabaseRequest("maquinas?select=id&nombre=eq."+encodeURIComponent(machine.name));
+  if (!rows[0]) throw new Error("Máquina no encontrada en Supabase: " + machine.name);
+  await supabaseRequest("maquinas?id=eq."+encodeURIComponent(rows[0].id), {
+    method:"PATCH",
+    body:{pedido_id:data.orderId || null,estado:data.orderId ? "ocupada" : "libre",actualizado_en:new Date().toISOString()}
+  });
+  if (data.orderId) {
+    const orderRows = await supabaseRequest("pedidos?select=cantidad&id=eq."+encodeURIComponent(String(data.orderId)));
+    const quantity = Number(orderRows[0]?.cantidad || 0);
+    const productionRows = await supabaseRequest("produccion?select=id&pedido_id=eq."+encodeURIComponent(String(data.orderId))+"&maquina_id=eq."+encodeURIComponent(rows[0].id)+"&limit=1");
+    const body = {pedido_id:data.orderId,maquina_id:rows[0].id,cantidad:quantity,producido:0,fecha_inicio:new Date().toISOString(),fecha_fin:null};
+    if (productionRows[0]) await supabaseRequest("produccion?id=eq."+encodeURIComponent(productionRows[0].id), {method:"PATCH",body});
+    else await supabaseRequest("produccion", {method:"POST",body});
+  } else {
+    await supabaseRequest("produccion?maquina_id=eq."+encodeURIComponent(rows[0].id)+"&fecha_fin=is.null", {
+      method:"PATCH",
+      body:{fecha_fin:new Date().toISOString()}
+    });
+  }
+  await refreshSupabaseDailyTotalV2();
+  return {ok:true,action:"updateMachine"};
+}
+
+async function refreshSupabaseDailyTotalV2() {
+  const active = await supabaseRequest("produccion?select=cantidad&fecha_fin=is.null");
+  const total = active.reduce((sum,row) => sum + Number(row.cantidad || 0), 0);
+  const date = todayV2();
+  const existing = await supabaseRequest("produccion_diaria?select=id&fecha=eq."+encodeURIComponent(date));
+  const body = {fecha:date,total,actualizado_en:new Date().toISOString()};
+  if (existing[0]) {
+    await supabaseRequest("produccion_diaria?id=eq."+encodeURIComponent(existing[0].id), {method:"PATCH",body});
+  } else {
+    await supabaseRequest("produccion_diaria", {method:"POST",body});
+  }
+  productionTotalV2 = total;
+  return total;
+}
+
+async function updateBatchSupabaseV2(data) {
+  const changes = JSON.parse(data.changes || "[]");
+  const machineChanges = JSON.parse(data.machines || "[]");
+  const newOrders = JSON.parse(data.newOrders || "[]");
+  for (const order of newOrders) await addOrderSupabaseV2({...order,operationId:order.operationId || ("batch_"+Date.now()+"_"+Math.random().toString(36).slice(2))});
+  for (const change of changes) await updateOrderSupabaseV2(change);
+  for (const machine of machineChanges) await updateMachineSupabaseV2(machine);
+  return {ok:true,action:"updateBatch"};
+}
+
+async function deleteOrderSupabaseV2(data) {
+  await supabaseRequest("pedidos?id=eq."+encodeURIComponent(String(data.id)), {method:"DELETE"});
+  return {ok:true,action:"deleteOrder"};
 }
 
 function getOperationStatusV2(operationId) {
-  return new Promise((resolve, reject) => {
-    const callback = "dunnoOperation_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    const script = document.createElement("script");
-    let finished = false;
-    const cleanup = () => {
-      script.remove();
-      delete window[callback];
-    };
-    const finish = (error, data) => {
-      if (finished) return;
-      finished = true;
-      cleanup();
-      if (error) reject(error);
-      else resolve(data);
-    };
-    if (!operationId) {
-      finish(new Error("Falta operationId para consultar el estado"));
-      return;
-    }
-    window[callback] = data => finish(null, data);
-    script.onerror = () => finish(new Error("No se pudo confirmar el pedido en Google Apps Script"));
-    script.src = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
-      "&action=operationStatus&operationId=" + encodeURIComponent(operationId) +
-      "&callback=" + callback + "&_=" + Date.now();
-    console.info("[Sheets] Consultando estado de operación", {operationId, url:script.src});
-    document.head.appendChild(script);
-    setTimeout(() => finish(new Error("Google Apps Script no confirmó el pedido a tiempo")), 15000);
-  });
+  return supabaseRequest("operaciones_pedidos?select=pedido_id&operation_id=eq."+encodeURIComponent(operationId))
+    .then(rows => rows[0] ? {ok:true, pending:false, orderId:rows[0].pedido_id} : {ok:true, pending:true});
 }
 
 function testConnection() {
-  return new Promise((resolve, reject) => {
-    const callback = "dunnoHealth_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    const script = document.createElement("script");
-    let finished = false;
-    window.dunnoData = null;
-    const url = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
-      "&action=health&callback=" + callback + "&_=" + Date.now();
-    const cleanup = () => {
-      script.remove();
-      delete window[callback];
-    };
-    const fail = message => {
-      if (finished) return;
-      finished = true;
-      cleanup();
-      console.error("[Sheets] Prueba de conexión fallida", message);
-      showSyncStatusV2("🔴 Google Apps Script no disponible", true);
-      reject(new Error(message));
-    };
-    window[callback] = response => {
-      if (finished) return;
-      finished = true;
-      cleanup();
-      console.info("[Sheets] Prueba de conexión exitosa", response);
-      showSyncStatusV2("🟢 Google Apps Script conectado");
-      resolve(response);
-    };
-    script.onerror = () => fail("No se pudo conectar con Google Apps Script");
-    script.onload = () => {
-      if (finished || !window.dunnoData) return;
-      finished = true;
-      cleanup();
-      console.info("[Sheets] Prueba legacy exitosa", window.dunnoData);
-      showSyncStatusV2("🟢 Google Apps Script conectado");
-      resolve(window.dunnoData);
-    };
-    script.src = url;
-    document.head.appendChild(script);
-    setTimeout(() => fail("Google Apps Script no respondió a tiempo"), 15000);
+  return supabaseRequest("pedidos?select=id&limit=1").then(() => {
+    showSyncStatusV2("🟢 Supabase conectado");
+    return {ok:true, message:"Supabase conectado"};
+  }).catch(error => {
+    showSyncStatusV2("🔴 Supabase no disponible", true);
+    throw error;
   });
 }
 window.testConnection = testConnection;
@@ -1269,7 +1280,7 @@ async function addOrder() {
 
 
   try {
-    console.info("[Sheets] POST iniciado", {operationId, client, design, qty, date, priority});
+    console.info("[Supabase] Alta iniciada", {operationId, client, design, qty, date, priority});
     await postAPI("addOrder", {
       operationId, client, design, qty, date, priority, contact:"", product:""
     });
@@ -1278,8 +1289,8 @@ async function addOrder() {
       await wait(1000);
       result = await getOperationStatusV2(operationId);
     }
-    if (!result || !result.ok || !result.orderId) throw new Error((result && result.error) || "Google Sheets no confirmó el pedido");
-    console.info("[Sheets] POST completado", result);
+    if (!result || !result.ok || !result.orderId) throw new Error((result && result.error) || "Supabase no confirmó el pedido");
+    console.info("[Supabase] Alta completada", result);
     orders=[...orders,{id:result.orderId,client,design,qty,done:0,date,priority,status:"pending"}];
     saveCache();
     render();
@@ -1307,7 +1318,7 @@ async function addOrder() {
 
 
   } catch (error) {
-    console.error("[Sheets] POST ERROR", error);
+    console.error("[Supabase] Alta ERROR", error);
     alert("No se pudo guardar el pedido.\n\n"+syncErrorMessageV2(error));
   }
 
@@ -2323,7 +2334,7 @@ function syncErrorMessageV2(error){
   if(/hoja/i.test(message))return "Error de hoja de cálculo: "+message;
   if(/columna|datos|incomplet|inválid/i.test(message))return "Error de datos/formato: "+message;
   if(/conectar|red|tiempo|respond/i.test(message))return "Error de conexión: "+message;
-  return "Google Apps Script rechazó la operación: "+message;
+  return "Supabase rechazó la operación: "+message;
 }
 function showSyncStatusV2(message,isError=false){
   const el=document.getElementById("syncStatusV2");
@@ -2399,7 +2410,7 @@ async function flushPendingChangesV2(){
       })))});break}
       catch(error){if(attempt===delays.length-1)throw error}
     }
-    if(!response?.ok)throw new Error("Google Apps Script no confirmó el lote");
+    if(!response?.ok)throw new Error("Supabase no confirmó el lote");
     batch.forEach(change=>{
       const current=pendingChangesV2[String(change.id)];
       if(current?.version===change.version){
@@ -2729,7 +2740,7 @@ if(pendingListV2().length||pendingMachineListV2().length||pendingOrderListV2().l
 // =====================================================
 // SINCRONIZACIÓN AUTOMÁTICA
 // =====================================================
-// Mantiene todos los dispositivos actualizados con Google Sheets.
+// Mantiene todos los dispositivos actualizados con Supabase.
 // Se consulta cada 5 segundos cuando la pestaña está visible.
 let realtimeSyncRunningV2 = false;
 const REALTIME_SYNC_INTERVAL_V2 = 5000;
