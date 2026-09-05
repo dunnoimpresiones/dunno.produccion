@@ -2560,30 +2560,31 @@ const WORKSHOP_MESSAGES_V2={
   quiet:[
     "Dale pa, así no vas a pagar las deudas.",
     "Rey, si seguís así vas a vender medias.",
-    "Hay más silencio que en una biblioteca. Prendé una máquina.",
+    "Hay más silencio que en un velorio. Prendé una máquina.",
     "Las impresoras están mirando el techo, jefe.",
-    "Una máquina laburando no hace verano. Metamos ritmo."
+    "Hasta Loan se esforzo más",
+    "Una máquina laburando no te paga la comida. Metele un poco."
   ],
   middle:[
-    "Vamos tomando ritmo, pero todavía hay bobinas mirando de afuera.",
+    "Vamos tomando ritmo, pero todavía le falta onda.",
     "Mitad taller, mitad siesta. Metele un poquito más.",
     "Bien ahí, pero todavía queda lugar para que arranquen más máquinas.",
-    "El motor ya calentó: ahora falta pisar el acelerador.",
-    "Vamos bien, pero esas máquinas libres no se van a prender solas."
+    "Dale papito, prende las que faltan.",
+    "Vamos bien, pero bien lento."
   ],
   near:[
-    "Casi a pleno. Una empujadita más y rompemos todo.",
+    "Casi a pleno. Una empujadita más y acabamos.",
     "Está picante el taller. Falta poquito para el modo fábrica.",
-    "Hermoso ritmo: quedan pocas máquinas mirando desde el banco.",
-    "Ya se siente el ruido lindo de las impresoras trabajando.",
+    "Hermoso ritmo: las maquinas estan más calientes que aquella.",
+    "Ya se siente el lorca.",
     "Estamos cerca del pleno, dale que so vo."
   ],
   full:[
     "A pleeeeeeeno. Así se trabaja.",
     "Dale que so vo: taller en modo fábrica.",
-    "Todas prendidas. Hoy las bobinas no descansan.",
-    "Taller completo, equipo completo, vamos con todo.",
-    "Máquinas a full: que no se enfríe ese ritmo."
+    "Todas prendidas. Hoy se come.",
+    "Taller completo, chocha, culo, teta.",
+    "Máquinas a full: moskito feliz."
   ]
 };
 function workshopMessageV2(inactive,total){
