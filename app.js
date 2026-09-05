@@ -831,6 +831,7 @@ function getOrdersFromAPI() {
         resolve({
           orders: Array.isArray(data.orders) ? data.orders : [],
           production: data.production || {},
+          productionToday: Number(data.productionToday ?? data.productionTotal ?? 0),
           machines: Array.isArray(data.machines) ? data.machines : []
         });
       };
@@ -894,7 +895,7 @@ async function syncFromSheets(
         ? result.production
         : productionDailyV2;
     productionTotalV2 = !Array.isArray(result)
-      ? Number(result.productionTotal || 0)
+      ? Number(result.productionToday || 0)
       : 0;
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
