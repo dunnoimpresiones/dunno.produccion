@@ -7,7 +7,8 @@ const CONFIG = {
 };
 
 const ORDER_HEADERS = ['ID','Cliente','Diseño','Cantidad','Producidos','Estado','Entrega','Prioridad','Actualizado'];
-const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Unidades'];
+const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Cantidad','Máquina','Estado','Colores'];
+const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
 const MACHINE_HEADERS = ['ID','Maquina','Pedido','Colores','Actualizado'];
 const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 
@@ -144,7 +145,7 @@ function updateBatch_(p){
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
   try{
-    changes.forEach(change=>updateOrderUnlocked_({id:change.id,done:change.done}));
+    changes.forEach(change=>updateOrderUnlocked_(change));
     return {count:changes.length};
   }finally{ lock.releaseLock(); }
 }
@@ -164,25 +165,43 @@ function updateOrderUnlocked_(p){
         rows[i][4]=done; rows[i][5]=status; rows[i][8]=new Date();
         sh.getRange(i+2,1,1,ORDER_HEADERS.length).setValues([rows[i]]);
         const difference=done-previous;
-        if(difference>0) appendProduction_(id,String(rows[i][2]||''),difference);
+        if(difference>0) appendProduction_({
+          id:id,
+          design:String(rows[i][2]||''),
+          units:difference,
+          machine:String(p.machine||p.machineName||''),
+          colors:String(p.colors||''),
+          status:status
+        });
         return;
       }
     }
     throw new Error('Pedido no encontrado: '+id);
 }
 
-function appendProduction_(id,design,units){
+function appendProduction_(production){
   const sh=getProductionSheet_();
-  sh.appendRow([new Date(),id,design,units]);
+  const now=new Date();
+  const date=Utilities.formatDate(now,PRODUCTION_TIMEZONE,'yyyy-MM-dd');
+  sh.appendRow([
+    date,
+    production.id,
+    production.design,
+    production.units,
+    production.machine,
+    production.status==='done'?'Completado':'En producción',
+    production.colors
+  ]);
 }
 
 function getProductionSheet_(){
   const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET);
   if(!sh) throw new Error('No existe la hoja "'+CONFIG.PRODUCTION_SHEET+'". Ejecutá setup() para crearla.');
-  if(sh.getLastColumn()<PRODUCTION_HEADERS.length) throw new Error('La hoja "'+CONFIG.PRODUCTION_SHEET+'" no tiene las 4 columnas esperadas: '+PRODUCTION_HEADERS.join(', '));
+  if(sh.getLastColumn()<PRODUCTION_HEADERS.length) sh.insertColumnsAfter(sh.getLastColumn(),PRODUCTION_HEADERS.length-sh.getLastColumn());
   const headers=sh.getRange(1,1,1,PRODUCTION_HEADERS.length).getValues()[0].map(String);
-  const mismatch=PRODUCTION_HEADERS.some((header,i)=>headers[i].trim()!==header);
-  if(mismatch) throw new Error('Columnas incorrectas en "'+CONFIG.PRODUCTION_SHEET+'". Se esperaban: '+PRODUCTION_HEADERS.join(', ')+'; se encontraron: '+headers.join(', '));
+  PRODUCTION_HEADERS.forEach((header,i)=>{
+    if(headers[i].trim()!==header) sh.getRange(1,i+1).setValue(header);
+  });
   return sh;
 }
 
@@ -199,7 +218,15 @@ function getProductionSummary_(){
   if(sh.getLastRow()<2) return {};
   const rows=sh.getRange(2,1,sh.getLastRow()-1,4).getValues();
   const out={};
-  rows.forEach(r=>{const d=r[0];if(!d)return;const k=Utilities.formatDate(new Date(d),Session.getScriptTimeZone(),'yyyy-MM-dd');out[k]=(Number(out[k]||0)+Number(r[3]||0));});
+  rows.forEach(r=>{
+    const d=r[0];
+    if(!d)return;
+    const text=String(d);
+    const k=/^\d{4}-\d{2}-\d{2}$/.test(text)
+      ? text
+      : Utilities.formatDate(new Date(d),PRODUCTION_TIMEZONE,'yyyy-MM-dd');
+    out[k]=(Number(out[k]||0)+Number(r[3]||0));
+  });
   return out;
 }
 
