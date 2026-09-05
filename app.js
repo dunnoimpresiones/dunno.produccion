@@ -802,107 +802,64 @@ function installMachineStyles() {
 function getOrdersFromAPI() {
 
   return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-
-      window.dunnoData =
-        null;
-
-
-      const script =
-        document.createElement(
-          "script"
-        );
-
-
-      const callback = "dunnoData_" + Date.now();
-      window[callback] = function(data) {
-        console.info("[Sheets] Respuesta recibida", data);
-        window.dunnoData = data;
+    (resolve, reject) => {
+      window.dunnoData = null;
+      const script = document.createElement("script");
+      const callback = "dunnoData_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      let finished = false;
+      let timeoutId = null;
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        script.remove();
+        delete window[callback];
       };
-      script.src =
-        CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
+      const finish = data => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        console.info("[Sheets] Datos recibidos", data);
+        if (!data) {
+          reject(new Error("Google Apps Script no devolvió datos"));
+          return;
+        }
+        if (!data.ok) {
+          reject(new Error(data.error || "Error de Google Apps Script"));
+          return;
+        }
+        resolve({
+          orders: Array.isArray(data.orders) ? data.orders : [],
+          production: data.production || {},
+          machines: Array.isArray(data.machines) ? data.machines : []
+        });
+      };
+      window[callback] = data => {
+        console.info("[Sheets] Callback ejecutado", callback);
+        window.dunnoData = data;
+        finish(data);
+      };
+      script.onload = () => {
+        console.info("[Sheets] Respuesta recibida, esperando formato legacy si corresponde");
+        if (window.dunnoData) finish(window.dunnoData);
+      };
+      script.onerror = () => {
+        console.error("[Sheets] Error de red al cargar datos", script.src);
+        if (!finished) {
+          finished = true;
+          cleanup();
+          reject(new Error("No se pudo conectar con Google Apps Script"));
+        }
+      };
+      script.src = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
         "&callback=" + callback + "&_=" + Date.now();
-
-
-      script.onload =
-        function() {
-
-          script.remove();
-          delete window[callback];
-
-
-          const data =
-            window.dunnoData;
-
-
-          if (
-            !data
-          ) {
-
-            reject(
-              new Error(
-                "Google Apps Script no devolvió datos"
-              )
-            );
-
-            return;
-
-          }
-
-
-          if (
-            !data.ok
-          ) {
-
-            reject(
-              new Error(
-                data.error ||
-                "Error de Google Apps Script"
-              )
-            );
-
-            return;
-
-          }
-
-
-          resolve({
-            orders: Array.isArray(data.orders) ? data.orders : [],
-            production: data.production || {},
-            machines: Array.isArray(data.machines) ? data.machines : []
-          });
-
-        };
-
-
-      script.onerror =
-        function() {
-
-          script.remove();
-          delete window[callback];
-          console.error("[Sheets] Error de red al cargar datos", script.src);
-
-
-          reject(
-            new Error(
-              "No se pudo conectar con Google Apps Script"
-            )
-          );
-
-        };
-
-
-      document
-        .head
-        .appendChild(
-          script
-        );
-      console.info("[Sheets] Enviando petición GET", script.src);
-
-      setTimeout(() => console.error("[Sheets] Timeout GET", script.src), 30000);
+      console.info("[Sheets] GET iniciado", script.src);
+      document.head.appendChild(script);
+      timeoutId = setTimeout(() => {
+        if (finished) return;
+        console.error("[Sheets] Timeout GET", script.src);
+        finished = true;
+        cleanup();
+        reject(new Error("Google Apps Script no respondió a tiempo"));
+      }, 30000);
     }
   );
 
