@@ -783,7 +783,8 @@ function installMachineStyles() {
       }
       .machine-quick-actions{justify-content:flex-end!important}
     }
-    .workshop-message{margin-top:10px;font-weight:800;color:var(--text,#fff);font-size:13px}
+    .workshop-message{margin-top:10px;font-weight:800;color:#111!important;font-size:13px}
+    html.dark .workshop-message{color:#fff!important}
   `;
 
   document
@@ -2454,6 +2455,11 @@ function dateKeyV2(date){
   const d=String(date.getDate()).padStart(2,"0");
   return `${y}-${m}-${d}`;
 }
+function productionUnitsForTodayV2(production){
+  const value=production&&production[todayV2()];
+  if(value&&typeof value==="object")return Number(value.units||0);
+  return Number(value||0);
+}
 function todayV2(){return dateKeyV2(new Date())}
 function addDailyV2(units){if(units<=0)return;const d=loadDailyV2(),k=todayV2();if(!d[k])d[k]={units:0};d[k].units=(d[k].units||0)+Number(units);saveDailyV2(d)}
 function toggleTheme(){document.documentElement.classList.toggle("dark");localStorage.setItem("dunno_produccion_theme",document.documentElement.classList.contains("dark")?"dark":"light");updateThemeButtonV2()}
@@ -2566,7 +2572,7 @@ function renderDashboardV2(){
     });
   }
 
-  const today=days[days.length-1].units;
+  const today=productionUnitsForTodayV2(production);
   const yesterday=days[days.length-2].units;
   const weeklyTotal=days.reduce((sum,day)=>sum+day.units,0);
   const weeklyAverage=Math.round(weeklyTotal/days.length);
@@ -2585,7 +2591,7 @@ function renderDashboardV2(){
     </div>
     <div class="dashboard-card">
       <div class="dashboard-title">Producción de hoy</div>
-      <div class="dashboard-big">${today} <small>unidades</small></div>
+      <div class="dashboard-big">${today} <small>llaveros</small></div>
       <div class="dashboard-meta">
         <span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span>
         <span>Máquinas <strong>${active}</strong></span>
