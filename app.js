@@ -774,16 +774,6 @@ function installMachineStyles() {
     html.dark .machine-order-progress{background:#222!important}
     html.dark .machine-order-progress>div{background:#fff!important}
     html.dark .color-add{background:#000!important;color:#fff!important;border:1px solid #fff!important}
-
-    /* Filas compactas: evita que las acciones invadan el resumen lateral. */
-    @media (min-width:901px){
-      .machine-card{
-        grid-template-columns:80px minmax(150px,1fr) 104px minmax(145px,1fr) minmax(100px,145px) minmax(140px,max-content)!important;
-        gap:10px!important;
-      }
-      .machine-quick-actions{justify-content:flex-end!important}
-    }
-    .workshop-message{margin-top:10px;font-weight:800;color:var(--text,#fff);font-size:13px}
   `;
 
   document
@@ -1014,284 +1004,25 @@ function cleanMachineOrders() {
 // POST
 // =====================================================
 
-// Se declara antes de postAPI para que toda llamada POST pueda crear sus
-// campos ocultos, incluso si el archivo se carga parcialmente o se reordena.
-function addFormField(
-  form,
-  name,
-  value
-) {
-
-  const input =
-    document.createElement(
-      "input"
-    );
-
-  input.type =
-    "hidden";
-
-  input.name =
-    name;
-
-  input.value =
-    value ?? "";
-
-  form.appendChild(
-    input
-  );
-
+function postAPI(action, data = {}) {
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement("iframe");
+    const form = document.createElement("form");
+    const name = "dunno_post_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    iframe.name = name; iframe.style.display = "none";
+    form.method = "POST"; form.action = CONFIG.API_URL; form.target = name; form.style.display = "none";
+    addFormField(form, "token", CONFIG.TOKEN); addFormField(form, "action", action);
+    Object.keys(data).forEach(key => addFormField(form, key, data[key]));
+    document.body.appendChild(iframe); document.body.appendChild(form);
+    let finished = false;
+    const cleanup = () => setTimeout(() => { form.remove(); iframe.remove(); }, 300);
+    const fail = message => { if(finished)return; finished=true; cleanup(); reject(new Error(message)); };
+    iframe.onload = () => { if(finished)return; finished=true; cleanup(); resolve({ok:true,submitted:true}); };
+    iframe.onerror = () => fail("No se pudo enviar la solicitud a Google Apps Script");
+    setTimeout(() => { if(!finished)fail("Tiempo de espera agotado al enviar la solicitud a Google Apps Script"); },10000);
+    form.submit();
+  });
 }
-
-function postAPI(
-  action,
-  data = {}
-) {
-
-  // postAPI no depende del ámbito global: el helper vive junto al envío.
-  // Esto evita el ReferenceError aunque el archivo se sirva como módulo o
-  // una versión antigua haya alterado el ámbito global.
-  const appendField = (
-    form,
-    name,
-    value
-  ) => {
-
-    const input = document.createElement("input");
-
-    input.type = "hidden";
-    input.name = name;
-    input.value = value ?? "";
-
-    form.appendChild(input);
-
-  };
-
-  return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-
-      const iframe =
-        document.createElement(
-          "iframe"
-        );
-
-
-      iframe.name =
-        "dunno_post_" +
-        Date.now();
-
-
-      iframe.style.display =
-        "none";
-
-
-      document
-        .body
-        .appendChild(
-          iframe
-        );
-
-
-      const form =
-        document.createElement(
-          "form"
-        );
-
-
-      form.method =
-        "POST";
-
-
-      form.action =
-        CONFIG.API_URL;
-
-
-      form.target =
-        iframe.name;
-
-
-      form.style.display =
-        "none";
-
-
-      appendField(
-        form,
-        "token",
-        CONFIG.TOKEN
-      );
-
-
-      appendField(
-        form,
-        "action",
-        action
-      );
-
-
-      Object.keys(data)
-        .forEach(
-          key => {
-
-            appendField(
-              form,
-              key,
-              data[key]
-            );
-
-          }
-        );
-
-
-      document
-        .body
-        .appendChild(
-          form
-        );
-
-
-      let finished =
-        false;
-
-
-      function finish() {
-
-        if (
-          finished
-        ) {
-
-          return;
-
-        }
-
-
-        finished =
-          true;
-
-
-        setTimeout(
-          () => {
-
-            form.remove();
-
-            iframe.remove();
-
-          },
-          500
-        );
-
-
-        resolve({
-          ok: true
-        });
-
-      }
-
-
-      iframe.onload =
-        function() {
-
-          finish();
-
-        };
-
-
-      iframe.onerror =
-        function() {
-
-          if (
-            finished
-          ) {
-
-            return;
-
-          }
-
-
-          finished =
-            true;
-
-
-          form.remove();
-
-          iframe.remove();
-
-
-          reject(
-            new Error(
-              "No se pudo enviar el pedido"
-            )
-          );
-
-        };
-
-
-      form.submit();
-
-
-      setTimeout(
-        () => {
-
-          finish();
-
-        },
-        5000
-      );
-
-    }
-  );
-
-}
-
-
-// =====================================================
-// MODAL
-// =====================================================
-
-function openOrderModal() {
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-
-  if (
-    modal
-  ) {
-
-    modal.classList
-      .remove(
-        "hidden"
-      );
-
-  }
-
-}
-
-
-function closeModal() {
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-
-  if (
-    modal
-  ) {
-
-    modal.classList
-      .add(
-        "hidden"
-      );
-
-  }
-
-}
-
 
 // =====================================================
 // AGREGAR PEDIDO
@@ -2439,13 +2170,7 @@ let savingOrdersV2={};let updateQueuesV2={};let openColorMachineIdV2=null;
 function normalizeMachinesV2(){machines=machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:m.orderId||"",colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));saveMachines();}
 function saveDailyV2(d){try{localStorage.setItem(DAILY_KEY_V2,JSON.stringify(d))}catch(e){console.error(e)}}
 function loadDailyV2(){try{return JSON.parse(localStorage.getItem(DAILY_KEY_V2)||"{}")}catch{return {}}}
-function dateKeyV2(date){
-  const y=date.getFullYear();
-  const m=String(date.getMonth()+1).padStart(2,"0");
-  const d=String(date.getDate()).padStart(2,"0");
-  return `${y}-${m}-${d}`;
-}
-function todayV2(){return dateKeyV2(new Date())}
+function todayV2(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function addDailyV2(units){if(units<=0)return;const d=loadDailyV2(),k=todayV2();if(!d[k])d[k]={units:0};d[k].units=(d[k].units||0)+Number(units);saveDailyV2(d)}
 function toggleTheme(){document.documentElement.classList.toggle("dark");localStorage.setItem("dunno_produccion_theme",document.documentElement.classList.contains("dark")?"dark":"light");updateThemeButtonV2()}
 function updateThemeButtonV2(){const b=document.getElementById("themeToggle");if(b)b.textContent=document.documentElement.classList.contains("dark")?"☀":"☾"}
@@ -2456,9 +2181,46 @@ function openColorPaletteV2(machineId){openColorMachineIdV2=Number(machineId);co
 function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
 
-// La actualización de producción se realiza exclusivamente con el setDone()
-// anterior: envía el nuevo valor a Apps Script y luego vuelve a sincronizar
-// desde Sheets. No se mantiene una segunda cola local que pueda sobrescribirlo.
+function queueUpdateV2(order){
+  const id=String(order.id);
+  updateQueuesV2[id]={id:order.id,done:Number(order.done||0)};
+  processQueueV2(id);
+}
+
+async function processQueueV2(id){
+  if(savingOrdersV2[id]||!updateQueuesV2[id])return;
+  const data=updateQueuesV2[id]; delete updateQueuesV2[id]; savingOrdersV2[id]=true; render();
+  try{
+    await postAPI("updateOrder",data);
+    let confirmed=false;
+    for(let attempt=0;attempt<6;attempt++){
+      await wait(attempt===0?700:500);
+      const ok=await syncFromSheets(false);
+      if(ok){
+        const saved=orders.find(o=>String(o.id)===String(id));
+        if(saved&&Number(saved.done||0)===Number(data.done)){confirmed=true;break;}
+      }
+    }
+    if(!confirmed)throw new Error("Google Sheets no confirmó el nuevo producido del pedido #"+id);
+  }catch(e){
+    console.error("Error guardando producción:",e);
+    alert("No se pudo confirmar el guardado en Google Sheets.\n\n"+e.message);
+    await syncFromSheets(false);
+  }finally{
+    savingOrdersV2[id]=false; if(updateQueuesV2[id])processQueueV2(id); else render();
+  }
+}
+
+function setDone(id,amount){
+  const o=orders.find(x=>String(x.id)===String(id)); if(!o)return;
+  const old=Number(o.done||0);
+  let n=amount==="ALL"?Number(o.qty):old+Number(amount);
+  n=Math.max(0,Math.min(Number(o.qty),n));
+  const delta=n-old; if(!delta)return;
+  // PRODUCCION_DIARIA is server-owned. Never increment it locally.
+  o.done=n; o.status=n>=Number(o.qty)?"done":n>0?"production":"pending";
+  saveCache(); render(); queueUpdateV2({id:o.id,done:n});
+}
 
 function renderMachineCard(machine){
   const order=orders.find(o=>String(o.id)===String(machine.orderId));
@@ -2475,7 +2237,11 @@ function renderMachineCard(machine){
   ).join("");
   const quick=order?`
     <div class="machine-quick-actions">
-      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',20)">+20</button>
+      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',-5)">−5</button>
+      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',-1)">−1</button>
+      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',1)">+1</button>
+      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',5)">+5</button>
+      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',10)">+10</button>
       <button class="machine-complete-btn" onclick="setDone('${js(order.id)}','ALL')">Completar</button>
     </div>`:"";
   return `<div class="machine-card">
@@ -2501,103 +2267,8 @@ function renderMachineCard(machine){
     <div class="machine-actions-block">${quick}</div>
   </div>`;
 }
-function renderDashboardV2(){
-  const el=document.getElementById("workshopDashboard");
-  if(!el)return;
-
-  const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;
-  const inactive=machines.length-active;
-  const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);
-  const workshopMessage=workshopMessageV2(inactive,machines.length);
-  const production=productionDailyV2||{};
-  const days=[];
-
-  for(let i=6;i>=0;i--){
-    const date=new Date();
-    date.setDate(date.getDate()-i);
-    const key=dateKeyV2(date);
-    const value=production[key];
-    days.push({
-      key,
-      units:Number(value?.units??value??0),
-      label:i===0?"Hoy":key.slice(8,10)+"/"+key.slice(5,7)
-    });
-  }
-
-  const today=days[days.length-1].units;
-  const yesterday=days[days.length-2].units;
-  const weeklyTotal=days.reduce((sum,day)=>sum+day.units,0);
-  const weeklyAverage=Math.round(weeklyTotal/days.length);
-  const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;
-  const max=Math.max(1,...days.map(day=>day.units));
-
-  el.innerHTML=`
-    <div class="dashboard-card alert-card ${inactive===0?"good":"warning"}">
-      <div>
-        <div class="dashboard-title">Estado del taller</div>
-        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div>
-        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div>
-        <div class="workshop-message">${workshopMessage}</div>
-      </div>
-      <div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div>
-    </div>
-    <div class="dashboard-card">
-      <div class="dashboard-title">Producción de hoy</div>
-      <div class="dashboard-big">${today} <small>unidades</small></div>
-      <div class="dashboard-meta">
-        <span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span>
-        <span>Máquinas <strong>${active}</strong></span>
-        <span>Promedio 7 días <strong>${weeklyAverage}</strong></span>
-        ${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}
-      </div>
-      <div class="dashboard-message">${motivationV2(today)}</div>
-      <div class="dashboard-history">${days.map(day=>`<div class="history-bar" style="height:${Math.max(6,Math.round(day.units/max*40))}px" title="${day.label}: ${day.units} unidades"><span class="history-label">${day.label}</span></div>`).join("")}</div>
-    </div>`;
-}
+function renderDashboardV2(){const el=document.getElementById("workshopDashboard");if(!el)return;const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;const inactive=machines.length-active;const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);const d=productionDailyV2||{},today=Number(d[todayV2()]||d[todayV2()]?.units||0);const y=new Date();y.setDate(y.getDate()-1);const yk=y.toISOString().slice(0,10),yesterday=Number(d[yk]?.units||0);const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;const days=[];for(let i=6;i>=0;i--){const x=new Date();x.setDate(x.getDate()-i);const k=x.toISOString().slice(0,10);days.push({k,u:Number(d[k]||d[k]?.units||0),label:i===0?"Hoy":k.slice(8,10)+"/"+k.slice(5,7)})}const max=Math.max(1,...days.map(x=>x.u));el.innerHTML=`<div class="dashboard-card alert-card ${inactive===0?"good":"warning"}"><div><div class="dashboard-title">Estado del taller</div><div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div><div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div></div><div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div></div><div class="dashboard-card"><div class="dashboard-title">Producción de hoy</div><div class="dashboard-big">${today} <small>unidades</small></div><div class="dashboard-meta"><span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span><span>Máquinas <strong>${active}</strong></span>${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}</div><div class="dashboard-message">${motivationV2(today)}</div><div class="dashboard-history">${days.map(x=>`<div class="history-bar" style="height:${Math.max(6,Math.round(x.u/max*40))}px" title="${x.u} unidades"><span class="history-label">${x.label}</span></div>`).join("")}</div></div>`}
 const MOTIVATION_KEY_V2="dunno_motivacion_diaria_v2";
-const WORKSHOP_MESSAGE_KEY_V2="dunno_estado_taller_v2";
-const WORKSHOP_MESSAGES_V2={
-  quiet:[
-    "Dale pa, así no vas a pagar las deudas.",
-    "Rey, si seguís así vas a vender medias.",
-    "Hay más silencio que en un velorio. Prendé una máquina.",
-    "Las impresoras están mirando el techo, jefe.",
-    "Hasta Loan se esforzo más",
-    "Una máquina laburando no te paga la comida. Metele un poco."
-  ],
-  middle:[
-    "Vamos tomando ritmo, pero todavía le falta onda.",
-    "Mitad taller, mitad siesta. Metele un poquito más.",
-    "Bien ahí, pero todavía queda lugar para que arranquen más máquinas.",
-    "Dale papito, prende las que faltan.",
-    "Vamos bien, pero bien lento."
-  ],
-  near:[
-    "Casi a pleno. Una empujadita más y acabamos.",
-    "Está picante el taller. Falta poquito para el modo fábrica.",
-    "Hermoso ritmo: las maquinas estan más calientes que aquella.",
-    "Ya se siente el lorca.",
-    "Estamos cerca del pleno, dale que so vo."
-  ],
-  full:[
-    "A pleeeeeeeno. Así se trabaja.",
-    "Dale que so vo: taller en modo fábrica.",
-    "Todas prendidas. Hoy se come.",
-    "Taller completo, chocha, culo, teta.",
-    "Máquinas a full: moskito feliz."
-  ]
-};
-function workshopMessageV2(inactive,total){
-  const bucket=inactive===0?"full":inactive<=2?"near":inactive<=Math.ceil(total/2)?"middle":"quiet";
-  const today=todayV2();
-  let saved={};
-  try{saved=JSON.parse(localStorage.getItem(WORKSHOP_MESSAGE_KEY_V2)||"{}")}catch(_){ }
-  if(saved.date===today&&saved.bucket===bucket&&saved.phrase)return saved.phrase;
-  const options=WORKSHOP_MESSAGES_V2[bucket];
-  const phrase=options[Math.floor(Math.random()*options.length)];
-  try{localStorage.setItem(WORKSHOP_MESSAGE_KEY_V2,JSON.stringify({date:today,bucket,phrase}))}catch(_){ }
-  return phrase;
-}
 const MOTIVATION_SETS_V2={
   "0":["Dale que arrancamos 🚀","Todo empieza con la primera impresión.","Vamos a poner esas máquinas a trabajar.","Arrancamos tranqui, pero arrancamos 🔥","Hoy se viene jornada de taller.","Primero una impresión, después vemos 😎","Que empiece el ruido de las máquinas.","Día nuevo, impresiones nuevas.","Vamos a llenar esas bobinas de trabajo.","El taller está listo. ¿Y nosotros? 😏","Hoy también se fabrica.","A darle vida a esas ideas.","Las máquinas están esperando 🔥","Ponemos primera y arrancamos.","Un buen día empieza con una impresión."],
   "1-99":["Ya arrancamos 🔥","El taller empieza a tomar ritmo.","Primeras impresiones del día 💪","De a poco se llena la mesa.","Ya hay movimiento en el taller.","La primera tanda ya está saliendo.","Arrancamos suave, pero con estilo.","Esto recién empieza 🚀","Unas cuantas impresiones y calentamos motores.","Ya estamos fabricando 🔥","El taller empieza a despertar.","Poco a poco, pedido a pedido.","Las máquinas ya están trabajando.","Buen comienzo para la jornada.","Ya salió la primera tanda."],
@@ -2697,3 +2368,4 @@ setInterval(realtimeSyncV2, REALTIME_SYNC_INTERVAL_V2);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) realtimeSyncV2();
 });
+
