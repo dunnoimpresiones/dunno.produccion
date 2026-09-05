@@ -72,18 +72,29 @@ function currentOrdersSheet_(){
 
 function doGet(e){
   const p=e&&e.parameter?e.parameter:{};
+  console.log('Petición GET recibida: '+String(p.action||'dashboard'));
   try{
     if(p.token!==CONFIG.TOKEN)return respond_({ok:false,error:'Token inválido'},p.callback);
+    if(p.action==='health'){
+      console.log('Prueba de conexión procesada');
+      return respond_({ok:true,success:true,message:'Google Apps Script conectado',timestamp:new Date().toISOString()},p.callback);
+    }
+    console.log('Procesando GET: '+String(p.action||'dashboard'));
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
-    return respond_({ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()},p.callback);
-  }catch(err){return respond_({ok:false,error:errorMessage_(err)},p.callback);}
+    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()};
+    console.log('Operación GET terminada');
+    return respond_(result,p.callback);
+  }catch(err){console.error('Error GET: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
 }
 function doPost(e){
   const p=e&&e.parameter?e.parameter:{};
+  console.log('Petición POST recibida: '+String(p.action||''));
   try{
     if(p.token!==CONFIG.TOKEN)return respond_({ok:false,error:'Token inválido'},p.callback);
-    return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
-  }catch(err){return respond_({ok:false,error:errorMessage_(err)},p.callback);}
+    const result={ok:true,action:p.action,data:executeAction_(p)};
+    console.log('Operación POST terminada: '+String(p.action||''));
+    return respond_(result,p.callback);
+  }catch(err){console.error('Error POST: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
 }
 function executeAction_(p){
   const action=p.action||'';

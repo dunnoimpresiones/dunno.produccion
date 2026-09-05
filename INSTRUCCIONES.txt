@@ -7,6 +7,8 @@ DUNNO PRODUCCION V4
 - Publicar una nueva versión de la implementación como Aplicación web.
 - Ejecutar como: Yo.
 - Quién tiene acceso: Cualquier usuario.
+- Probar desde la consola del navegador con `testConnection()`. Debe mostrar
+  `Google Apps Script conectado`.
 
 La aplicación crea automáticamente la hoja mensual PEDIDOS_MES_AÑO, por ejemplo
 PEDIDOS_SEPTIEMBRE_2026, y conserva pedidos de meses anteriores.
@@ -20,6 +22,9 @@ Hojas utilizadas:
 El endpoint mantiene JSONP compatible con la aplicación y devuelve respuestas JSON
 con ok, data o error. Los pedidos nuevos, avances y asignaciones se envían en lotes.
 Los pedidos pendientes de sincronización se conservan en localStorage y se reintentan.
+La aplicación también acepta temporalmente la respuesta de implementaciones antiguas
+que asignan `window.dunnoData`, pero la implementación nueva debe responder usando
+el callback JSONP recibido.
 
 2) GITHUB PAGES
 Reemplazar en la raíz del repositorio:
