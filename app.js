@@ -785,7 +785,38 @@ function installMachineStyles() {
     }
     .workshop-message{margin-top:10px;font-weight:800;color:var(--text,#fff);font-size:13px}
   `;
+.machine-empty-state{
+  min-height:28px;
+}
 
+.palette-footer{
+  display:flex;
+  justify-content:flex-end;
+  padding-top:8px;
+  margin-top:8px;
+  border-top:1px solid #ddd;
+}
+
+.color-done-btn{
+  border:1px solid #222;
+  background:#111;
+  color:#fff;
+  border-radius:7px;
+  padding:6px 12px;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+html.dark .palette-footer{
+  border-top-color:#333;
+}
+
+html.dark .color-done-btn{
+  background:#fff;
+  color:#000;
+  border-color:#fff;
+}
   document
     .head
     .appendChild(
@@ -2451,8 +2482,167 @@ function toggleTheme(){document.documentElement.classList.toggle("dark");localSt
 function updateThemeButtonV2(){const b=document.getElementById("themeToggle");if(b)b.textContent=document.documentElement.classList.contains("dark")?"☀":"☾"}
 function initThemeV2(){if(localStorage.getItem("dunno_produccion_theme")==="dark")document.documentElement.classList.add("dark");updateThemeButtonV2()}
 
-async function toggleMachineColorV2(machineId,name){const m=machines.find(x=>Number(x.id)===Number(machineId));if(!m)return;m.colors=m.colors||[];const i=m.colors.indexOf(name);if(i>=0)m.colors.splice(i,1);else{if(m.colors.length>=16){alert("Esta impresora ya tiene 16 colores seleccionados.");return}m.colors.push(name)}saveMachines();render();openColorPaletteV2(machineId);try{await postAPI("updateMachine",{machineId:m.id,orderId:m.orderId||"",colors:JSON.stringify(m.colors)})}catch(e){console.error("No se pudieron guardar los colores:",e)}}
-function openColorPaletteV2(machineId){openColorMachineIdV2=Number(machineId);const m=machines.find(x=>Number(x.id)===openColorMachineIdV2),p=document.getElementById("colorPopover");if(!m||!p)return;p.innerHTML=`<div class="palette-head"><span>Colores — ${esc(m.name)}</span><span class="palette-count">${(m.colors||[]).length}/16</span></div><div class="palette-grid">${DUNNO_COLORS.map(c=>`<button class="palette-item ${(m.colors||[]).includes(c[0])?"selected":""}" style="background:${c[1]}" title="${escAttr(c[0])}" onclick="toggleMachineColorV2(${m.id},'${js(c[0])}')"></button>`).join("")}</div>`;p.classList.remove("hidden");const b=document.querySelector(`[data-color-btn="${m.id}"]`);if(b){const r=b.getBoundingClientRect();p.style.left=Math.min(window.innerWidth-300,Math.max(8,r.right-290))+"px";p.style.top=Math.min(window.innerHeight-300,r.bottom+7)+"px"}}
+async function toggleMachineColorV2(machineId, name) {
+
+  const m = machines.find(
+    x => Number(x.id) === Number(machineId)
+  );
+
+  if (!m) return;
+
+  m.colors = m.colors || [];
+
+  const index = m.colors.indexOf(name);
+
+  if (index >= 0) {
+
+    // Quitar color
+    m.colors.splice(index, 1);
+
+  } else {
+
+    // Agregar color
+    if (m.colors.length >= 16) {
+
+      alert("Esta impresora ya tiene 16 colores seleccionados.");
+      return;
+
+    }
+
+    m.colors.push(name);
+  }
+
+  // Guardamos localmente
+  saveMachines();
+
+  // IMPORTANTE:
+  // No cerramos la paleta ni guardamos en Sheets todavía.
+  // La paleta permanece abierta para poder seleccionar
+  // todos los colores que quieras.
+  openColorPaletteV2(machineId);
+}
+function openColorPaletteV2(machineId) {
+
+  openColorMachineIdV2 = Number(machineId);
+
+  const m = machines.find(
+    x => Number(x.id) === openColorMachineIdV2
+  );
+
+  const p = document.getElementById("colorPopover");
+
+  if (!m || !p) return;
+
+  p.innerHTML = `
+    <div class="palette-head">
+      <span>Colores — ${esc(m.name)}</span>
+      <span class="palette-count">
+        ${(m.colors || []).length}/16
+      </span>
+    </div>
+
+    <div class="palette-grid">
+
+      ${DUNNO_COLORS.map(c => `
+        <button
+          type="button"
+          class="palette-item ${
+            (m.colors || []).includes(c[0])
+              ? "selected"
+              : ""
+          }"
+          style="background:${c[1]}"
+          title="${escAttr(c[0])}"
+          onclick="
+            toggleMachineColorV2(
+              ${m.id},
+              '${js(c[0])}'
+            );
+            event.stopPropagation();
+          "
+        ></button>
+      `).join("")}
+
+    </div>
+
+    <div class="palette-footer">
+
+      <button
+        type="button"
+        class="color-done-btn"
+        onclick="
+          finishColorPaletteV2(${m.id});
+          event.stopPropagation();
+        "
+      >
+        Listo
+      </button>
+
+    </div>
+  `;
+
+  p.classList.remove("hidden");
+
+  const b = document.querySelector(
+    `[data-color-btn="${m.id}"]`
+  );
+
+  if (b) {
+
+    const r = b.getBoundingClientRect();
+
+    p.style.left =
+      Math.min(
+        window.innerWidth - 300,
+        Math.max(8, r.right - 290)
+      ) + "px";
+
+    p.style.top =
+      Math.min(
+        window.innerHeight - 350,
+        r.bottom + 7
+      ) + "px";
+  }
+}
+async function finishColorPaletteV2(machineId) {
+
+  const m = machines.find(
+    x => Number(x.id) === Number(machineId)
+  );
+
+  if (!m) return;
+
+  try {
+
+    await postAPI(
+      "updateMachine",
+      {
+        machineId: m.id,
+        orderId: m.orderId || "",
+        colors: JSON.stringify(
+          m.colors || []
+        )
+      }
+    );
+
+    closeColorPaletteV2();
+
+    // Actualizamos los colores visibles
+    render();
+
+  } catch (e) {
+
+    console.error(
+      "No se pudieron guardar los colores:",
+      e
+    );
+
+    alert(
+      "No se pudieron guardar los colores.\n\n" +
+      e.message
+    );
+  }
+}
 function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
 
