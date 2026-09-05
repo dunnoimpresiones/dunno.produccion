@@ -1,25 +1,30 @@
-DUNNO PRODUCCION V3
+DUNNO PRODUCCION V4
 
 1) GOOGLE APPS SCRIPT
 - Abrir el proyecto de Apps Script.
 - Reemplazar TODO el contenido de Code.gs por el Code.gs de esta carpeta.
-- Guardar.
-- Ejecutar setup() una vez y autorizar si lo pide.
-- Verificar que aparezca la hoja MAQUINAS.
-- Verificar que PRODUCCION_DIARIA tenga estos encabezados en la fila 1:
-  Fecha | Pedido | Diseño | Cantidad | Máquina | Estado | Colores
-- Volver a Implementar > Administrar implementaciones.
-- Editar la implementación del tipo Aplicación web.
-- Nueva versión.
+- Guardar y ejecutar setup() una vez para autorizar y crear las hojas.
+- Publicar una nueva versión de la implementación como Aplicación web.
 - Ejecutar como: Yo.
 - Quién tiene acceso: Cualquier usuario.
-- Implementar.
-- Después de reemplazar Code.gs, volver a publicar una nueva versión; la aplicación usa
-  respuestas JSONP para confirmar el resultado real de cada escritura.
-- La actualización de producción utiliza la acción `updateBatch`; es necesario publicar
-  esta versión de Code.gs para que los cambios agrupados se procesen correctamente.
-- Cada avance registra únicamente la diferencia producida en ese momento. La fecha se
-  guarda como `yyyy-MM-dd` usando la zona horaria `America/Argentina/Buenos_Aires`.
+- Probar desde la consola del navegador con `testConnection()`. Debe mostrar
+  `Google Apps Script conectado`.
+
+La aplicación crea automáticamente la hoja mensual PEDIDOS_MES_AÑO, por ejemplo
+PEDIDOS_SEPTIEMBRE_2026, y conserva pedidos de meses anteriores.
+
+Hojas utilizadas:
+- PEDIDOS_MES_AÑO: historial mensual de pedidos.
+- PRODUCCION_DIARIA: producciones activas y eventos históricos idempotentes.
+- RESUMEN_PRODUCCION: total producido por fecha.
+- MAQUINAS: asignaciones actuales.
+
+El endpoint mantiene JSONP compatible con la aplicación y devuelve respuestas JSON
+con ok, data o error. Los pedidos nuevos, avances y asignaciones se envían en lotes.
+Los pedidos pendientes de sincronización se conservan en localStorage y se reintentan.
+La aplicación también acepta temporalmente la respuesta de implementaciones antiguas
+que asignan `window.dunnoData`, pero la implementación nueva debe responder usando
+el callback JSONP recibido.
 
 2) GITHUB PAGES
 Reemplazar en la raíz del repositorio:
@@ -29,7 +34,6 @@ Reemplazar en la raíz del repositorio:
 
 3) IMPORTANTE
 - Hacer Ctrl + Shift + R al abrir la web.
-- Esta versión guarda la asignación de máquinas y colores en Google Sheets.
-- PC, tablet y celular comparten el mismo estado.
-- La app consulta los datos cada 5 segundos cuando está visible.
-- La interfaz mantiene las filas largas y el modo oscuro aprobado.
+- La fecha de producción usa America/Argentina/Buenos_Aires.
+- Ejecutar setup() nuevamente solo después de publicar este Code.gs.
+- No borrar las hojas históricas ni modificar manualmente sus encabezados.

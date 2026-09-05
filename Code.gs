@@ -2,245 +2,263 @@ const CONFIG = {
   SPREADSHEET_ID: '1fNaERltql_EDl1IGn1TnnMDT_X-a1t96E_zrkfggHIg',
   ORDERS_SHEET: 'PEDIDOS',
   PRODUCTION_SHEET: 'PRODUCCION_DIARIA',
+  SUMMARY_SHEET: 'RESUMEN_PRODUCCION',
+  OPERATIONS_SHEET: 'OPERACIONES_PEDIDOS',
   MACHINES_SHEET: 'MAQUINAS',
   TOKEN: 'Dunno0109'
 };
 
-const ORDER_HEADERS = ['ID','Cliente','Diseño','Cantidad','Producidos','Estado','Entrega','Prioridad','Actualizado'];
-const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Cantidad','Máquina','Estado','Colores'];
-const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
+const ORDER_HEADERS = ['ID','Fecha','Hora','Cliente','Contacto','Producto','Diseño','Cantidad','Producidos','Estado','Máquina','Fecha_inicio','Fecha_completado','Prioridad','Actualizado'];
+const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Cantidad a producir','Cantidad realizada','Máquina','Estado','Colores','Tipo','ID_PRODUCCION'];
+const SUMMARY_HEADERS = ['Fecha','Total_produccion'];
 const MACHINE_HEADERS = ['ID','Maquina','Pedido','Colores','Actualizado'];
 const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
+const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
+const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
 
 function getSS_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
-
 function setup(){
   const ss=getSS_();
-  const pedidos=ensureSheet_(ss,CONFIG.ORDERS_SHEET,ORDER_HEADERS);
-  ensureSheet_(ss,CONFIG.PRODUCTION_SHEET,PRODUCTION_HEADERS);
-  const machines=ensureSheet_(ss,CONFIG.MACHINES_SHEET,MACHINE_HEADERS);
-  if(machines.getLastRow()<2){
-    const now=new Date();
-    machines.getRange(2,1,MACHINE_NAMES.length,5).setValues(
-      MACHINE_NAMES.map((name,i)=>[i+1,name,'','',now])
-    );
-  } else {
-    const existing=machines.getRange(2,1,Math.max(0,machines.getLastRow()-1),5).getValues();
-    const byId={};
-    existing.forEach(r=>{if(r[0]!==''&&r[0]!=null)byId[String(r[0])]=r;});
-    const rows=MACHINE_NAMES.map((name,i)=>byId[String(i+1)]||[i+1,name,'','',new Date()]);
-    machines.getRange(2,1,rows.length,5).setValues(rows);
-  }
-  pedidos.setFrozenRows(1);
-  return 'OK';
+  currentOrdersSheet_();
+  ensureProductionSheet_(ss);
+  ensureSheet_(ss,CONFIG.SUMMARY_SHEET,SUMMARY_HEADERS);
+  ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
+  const sh=ensureSheet_(ss,CONFIG.MACHINES_SHEET,MACHINE_HEADERS);
+  const rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,5).getValues():[],byId={};
+  rows.forEach(r=>{if(r[0]!==''&&r[0]!=null)byId[String(r[0])]=r;});
+  sh.getRange(2,1,MACHINE_NAMES.length,5).setValues(MACHINE_NAMES.map((name,i)=>byId[String(i+1)]||[i+1,name,'','',new Date()]));
+  return {ok:true};
 }
-
 function ensureSheet_(ss,name,headers){
-  let sh=ss.getSheetByName(name);
-  if(!sh) sh=ss.insertSheet(name);
-  sh.getRange(1,1,1,headers.length).setValues([headers]);
-  sh.setFrozenRows(1);
-  sh.getRange(1,1,1,headers.length).setFontWeight('bold');
+  let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
+  if(sh.getMaxColumns()<headers.length)sh.insertColumnsAfter(sh.getMaxColumns(),headers.length-sh.getMaxColumns());
+  sh.getRange(1,1,1,headers.length).setValues([headers]);sh.setFrozenRows(1);return sh;
+}
+function ensureProductionSheet_(ss){
+  let sh=ss.getSheetByName(CONFIG.PRODUCTION_SHEET);
+  if(!sh)return ensureSheet_(ss,CONFIG.PRODUCTION_SHEET,PRODUCTION_HEADERS);
+  const header=sh.getRange(1,1,1,Math.min(7,sh.getLastColumn())).getValues()[0].map(String);
+  const legacy=header.join('|')==='Fecha|Pedido|Diseño|Cantidad|Máquina|Estado|Colores';
+  const oldRows=legacy&&sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,7).getValues():[];
+  if(sh.getMaxColumns()<PRODUCTION_HEADERS.length)sh.insertColumnsAfter(sh.getMaxColumns(),PRODUCTION_HEADERS.length-sh.getMaxColumns());
+  sh.getRange(1,1,1,PRODUCTION_HEADERS.length).setValues([PRODUCTION_HEADERS]);
+  if(legacy&&oldRows.length){
+    const migrated=oldRows.map((r,i)=>[r[0],r[1],r[2],0,Number(r[3]||0),r[4],r[5],r[6],'HISTORICAL','LEGACY|'+String(i+2)]);
+    sh.getRange(2,1,migrated.length,PRODUCTION_HEADERS.length).setValues(migrated);
+  }
+  sh.setFrozenRows(1);return sh;
+}
+function monthlySheetName_(date){
+  const month=Utilities.formatDate(date,PRODUCTION_TIMEZONE,'MMMM').toUpperCase();
+  const names={JANUARY:'ENERO',FEBRUARY:'FEBRERO',MARCH:'MARZO',APRIL:'ABRIL',MAY:'MAYO',JUNE:'JUNIO',JULY:'JULIO',AUGUST:'AGOSTO',SEPTEMBER:'SEPTIEMBRE',OCTOBER:'OCTUBRE',NOVEMBER:'NOVIEMBRE',DECEMBER:'DICIEMBRE'};
+  return 'PEDIDOS_'+(names[month]||month)+'_'+Utilities.formatDate(date,PRODUCTION_TIMEZONE,'yyyy');
+}
+function currentOrdersSheet_(){
+  const ss=getSS_(),name=monthlySheetName_(new Date()),existing=ss.getSheetByName(name);
+  const oldHeader=existing&&existing.getLastRow()>0?existing.getRange(1,1,1,Math.min(ORDER_HEADERS.length,existing.getLastColumn())).getValues()[0].map(String):[];
+  const oldRows=existing&&oldHeader[1]!=='Fecha'&&existing.getLastRow()>1?existing.getRange(2,1,existing.getLastRow()-1,Math.min(9,existing.getLastColumn())).getValues().filter(r=>r[0]!==''&&r[0]!=null):[];
+  const sh=ensureSheet_(ss,name,ORDER_HEADERS);
+  const legacy=ss.getSheetByName(CONFIG.ORDERS_SHEET);
+  if(sh.getLastRow()<2&&oldRows.length){
+    const rows=oldRows.map(r=>[String(r[0]),formatDate_(r[6]),'',String(r[1]||''),'','',String(r[2]||''),Number(r[3]||0),Number(r[4]||0),normalizeStatus_(r[5]),'','','',String(r[7]||'normal'),r[8]||new Date()]);
+    sh.getRange(2,1,rows.length,ORDER_HEADERS.length).setValues(rows);
+  }else if(sh.getLastRow()<2&&legacy&&legacy.getLastRow()>1){
+    const legacyRows=legacy.getRange(2,1,legacy.getLastRow()-1,Math.min(9,legacy.getLastColumn())).getValues();
+    const rows=legacyRows.filter(r=>r[0]!==''&&r[0]!=null).map(r=>[
+      String(r[0]),formatDate_(r[6]),'',String(r[1]||''),'','',String(r[2]||''),Number(r[3]||0),
+      Number(r[4]||0),normalizeStatus_(r[5]),'','','',String(r[7]||'normal'),r[8]||new Date()
+    ]);
+    if(rows.length)sh.getRange(2,1,rows.length,ORDER_HEADERS.length).setValues(rows);
+  }
   return sh;
 }
 
 function doGet(e){
+  const p=e&&e.parameter?e.parameter:{};
+  console.log('Petición GET recibida: '+String(p.action||'dashboard'));
   try{
-    const p=e&&e.parameter?e.parameter:{};
-    if(p.token!==CONFIG.TOKEN) return respond_({ok:false,error:'Token inválido'},p.callback);
-    if(p.action){
-      executeAction_(p);
-      return respond_({ok:true,action:p.action},p.callback);
+    if(p.token!==CONFIG.TOKEN)return respond_({ok:false,error:'Token inválido'},p.callback);
+    if(p.action==='health'){
+      console.log('Prueba de conexión procesada');
+      return respond_({ok:true,success:true,message:'Google Apps Script conectado',timestamp:new Date().toISOString()},p.callback);
     }
-    const data=getDashboardData_();
-    return respond_(data,p.callback);
-  }catch(err){
-    return respond_({ok:false,error:String(err)},e&&e.parameter?e.parameter.callback:'');
-  }
+    if(p.action==='operationStatus' || p.action==='getOperationStatusV2')return respond_(operationStatusCompat_(p),p.callback);
+    console.log('Procesando GET: '+String(p.action||'dashboard'));
+    if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
+    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()};
+    console.log('Operación GET terminada');
+    return respond_(result,p.callback);
+  }catch(err){console.error('Error GET: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
 }
-
 function doPost(e){
+  const p=e&&e.parameter?e.parameter:{};
+  console.log('[POST] Petición recibida: '+String(p.action||''));
+  console.log('[POST] Payload recibido: '+JSON.stringify(p));
   try{
-    const p=e&&e.parameter?e.parameter:{};
-    if(p.token!==CONFIG.TOKEN) return html_('Token inválido');
-    executeAction_(p);
-    return html_('OK');
-  }catch(err){ return html_('ERROR: '+String(err)); }
+    if(p.token!==CONFIG.TOKEN)return respond_({ok:false,error:'Token inválido'},p.callback);
+    console.log('[POST] Datos interpretados');
+    const result={ok:true,action:p.action,data:executeAction_(p)};
+    console.log('[POST] Respuesta enviada');
+    return respond_(result,p.callback);
+  }catch(err){console.error('[POST] ERROR: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
 }
-
 function executeAction_(p){
   const action=p.action||'';
-  if(action==='addOrder') addOrder_(p);
-  else if(action==='updateOrder') updateOrder_(p);
-  else if(action==='updateBatch') updateBatch_(p);
-  else if(action==='deleteOrder') deleteOrder_(p);
-  else if(action==='updateMachine') updateMachine_(p);
-  else throw new Error('Acción no reconocida: '+action);
+  if(action==='addOrder')return addOrder_(p);
+  if(action==='updateOrder')return updateOrder_(p);
+  if(action==='updateBatch')return updateBatch_(p);
+  if(action==='deleteOrder')return deleteOrder_(p);
+  if(action==='updateMachine')return updateMachine_(p);
+  throw new Error('Acción no reconocida: '+action);
 }
-
-function getDashboardData_(){
-  return {ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()};
+function operationStatus_(p){
+  const operationId=String(p.operationId||'').trim();
+  if(!operationId)return {ok:false,error:'Falta operationId'};
+  const sh=getSS_().getSheetByName(CONFIG.OPERATIONS_SHEET);
+  if(!sh||sh.getLastRow()<2)return {ok:true,pending:true,processed:false};
+  const rows=readTable_(sh,OPERATION_HEADERS.length);
+  for(let i=0;i<rows.length;i++)if(String(rows[i][0])===operationId){
+    const status=String(rows[i][2]||'');
+    return {ok:status==='OK',pending:false,processed:status==='OK',success:status==='OK',orderId:String(rows[i][1]||''),error:status==='OK'?'':status};
+  }
+  return {ok:true,pending:true,processed:false,success:true};
 }
-
+function operationStatusCompat_(p){
+  const response=operationStatus_(p);
+  return {
+    success: !!(response && response.success !== false && response.ok !== false),
+    processed: !!(response && response.processed),
+    ok: !!(response && response.ok !== false),
+    pending: !!(response && response.pending),
+    orderId: response && response.orderId ? String(response.orderId) : '',
+    error: response && response.error ? String(response.error) : '',
+    message: response && response.processed ? 'Operación procesada' : 'Operación pendiente'
+  };
+}
+function readTable_(sh,width){return sh.getLastRow()<2?[]:sh.getRange(2,1,sh.getLastRow()-1,width).getValues();}
 function getOrders_(){
-  const sh=getSS_().getSheetByName(CONFIG.ORDERS_SHEET);
-  if(!sh || sh.getLastRow()<2) return [];
-  const rows=sh.getRange(2,1,sh.getLastRow()-1,ORDER_HEADERS.length).getValues();
-  return rows.filter(r=>r[0]!==''&&r[0]!=null).map(r=>({
-    id:String(r[0]), client:String(r[1]||''), design:String(r[2]||''), qty:Number(r[3]||0),
-    done:Number(r[4]||0), status:String(r[5]||'pending'), date:formatDate_(r[6]),
-    priority:String(r[7]||'normal'), updated:r[8]?String(r[8]):''
+  const ss=getSS_(),sheets=ss.getSheets().filter(sh=>/^PEDIDOS_[A-ZÁÉÍÓÚ]+_\d{4}$/.test(sh.getName()));
+  if(!sheets.some(sh=>sh.getName()===monthlySheetName_(new Date())))sheets.push(currentOrdersSheet_());
+  return [].concat.apply([],sheets.map(sh=>readTable_(sh,ORDER_HEADERS.length))).filter(r=>r[0]!==''&&r[0]!=null).map(r=>({
+    id:String(r[0]),date:formatDate_(r[1]),time:String(r[2]||''),client:String(r[3]||''),contact:String(r[4]||''),
+    product:String(r[5]||''),design:String(r[6]||''),qty:Number(r[7]||0),done:Number(r[8]||0),
+    status:normalizeStatus_(r[9]),machine:String(r[10]||''),priority:String(r[13]||'normal'),updated:r[14]?String(r[14]):''
   }));
 }
-
 function getMachines_(){
-  const sh=getSS_().getSheetByName(CONFIG.MACHINES_SHEET);
-  if(!sh || sh.getLastRow()<2){ setup(); return getMachines_(); }
-  const rows=sh.getRange(2,1,sh.getLastRow()-1,5).getValues();
-  const byId={};
+  const rows=readTable_(ensureSheet_(getSS_(),CONFIG.MACHINES_SHEET,MACHINE_HEADERS),MACHINE_HEADERS.length),byId={};
   rows.forEach(r=>{if(r[0]!==''&&r[0]!=null)byId[String(r[0])]=r;});
   return MACHINE_NAMES.map((name,i)=>{
-    const r=byId[String(i+1)]||[];
-    let colors=[];
-    try{ colors=r[3]?JSON.parse(String(r[3])):[]; }catch(_){ colors=String(r[3]||'').split(',').map(s=>s.trim()).filter(Boolean); }
+    const r=byId[String(i+1)]||[];let colors=[];
+    try{colors=r[3]?JSON.parse(String(r[3])):[];}catch(_){}
     return {id:i+1,name:name,orderId:String(r[2]||''),colors:Array.isArray(colors)?colors.slice(0,16):[]};
   });
 }
-
-function updateMachine_(p){
-  const sh=getSS_().getSheetByName(CONFIG.MACHINES_SHEET)||ensureSheet_(getSS_(),CONFIG.MACHINES_SHEET,MACHINE_HEADERS);
-  const id=Number(p.machineId||0);
-  if(id<1||id>MACHINE_NAMES.length) throw new Error('Máquina inválida');
-  let colors=[];
-  try{ colors=p.colors?JSON.parse(p.colors):[]; }catch(_){ colors=[]; }
-  colors=Array.isArray(colors)?colors.slice(0,16):[];
-  const row=id+1;
-  sh.getRange(row,1,1,5).setValues([[id,MACHINE_NAMES[id-1],String(p.orderId||''),JSON.stringify(colors),new Date()]]);
+function findOrderRow_(sh,id){
+  const rows=readTable_(sh,ORDER_HEADERS.length);
+  for(let i=0;i<rows.length;i++)if(String(rows[i][0])===String(id))return {index:i+2,row:rows[i]};
+  return null;
 }
-
+function findOrderLocation_(id){
+  const ss=getSS_(),sheets=ss.getSheets().filter(sh=>/^PEDIDOS_[A-ZÁÉÍÓÚ]+_\d{4}$/.test(sh.getName()));
+  for(let i=0;i<sheets.length;i++){const found=findOrderRow_(sheets[i],id);if(found)return {sheet:sheets[i],index:found.index,row:found.row};}
+  return null;
+}
 function addOrder_(p){
-  const sh=getSS_().getSheetByName(CONFIG.ORDERS_SHEET)||ensureSheet_(getSS_(),CONFIG.ORDERS_SHEET,ORDER_HEADERS);
-  const id=String(p.id||'').trim();
-  const design=String(p.design||'').trim();
-  const qty=Number(p.qty||0);
-  if(!id||!design||qty<=0) throw new Error('Datos de pedido incompletos');
-  const existing=getOrders_().some(o=>String(o.id)===id);
-  if(existing) throw new Error('Ya existe el pedido '+id);
-  const now=new Date();
-  sh.appendRow([id,String(p.client||''),design,qty,0,'pending',String(p.date||''),String(p.priority||'normal'),now]);
+  const lock=LockService.getScriptLock();lock.waitLock(10000);
+  try{return addOrderUnlocked_(p);}finally{lock.releaseLock();}
 }
-
-function updateOrder_(p){
-  const lock=LockService.getScriptLock();
-  lock.waitLock(10000);
-  try{
-    return updateOrderUnlocked_(p);
-  }finally{ lock.releaseLock(); }
+function addOrderUnlocked_(p){
+  const operationId=String(p.operationId||'').trim(),design=String(p.design||'').trim(),qty=Number(p.qty||0);
+  if(!operationId||!design||qty<=0)throw new Error('Datos de pedido incompletos');
+  console.log('[POST] Pedido válido: '+operationId);
+  const ss=getSS_(),opSheet=ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
+  const opRows=readTable_(opSheet,OPERATION_HEADERS.length);
+  for(let i=0;i<opRows.length;i++)if(String(opRows[i][0])===operationId)return {success:true,orderId:String(opRows[i][1]||''),duplicate:true};
+  const sh=currentOrdersSheet_(),id=nextOrderId_(sh);
+  console.log('[POST] ID generado: '+id);
+  const now=new Date(),date=p.date?String(p.date):Utilities.formatDate(now,PRODUCTION_TIMEZONE,'yyyy-MM-dd');
+  sh.getRange(sh.getLastRow()+1,1,1,ORDER_HEADERS.length).setValues([[
+    id,date,Utilities.formatDate(now,PRODUCTION_TIMEZONE,'HH:mm:ss'),String(p.client||''),String(p.contact||''),
+    String(p.product||''),design,qty,0,'pending','', '', '',String(p.priority||'normal'),now
+  ]]);
+  opSheet.getRange(opSheet.getLastRow()+1,1,1,OPERATION_HEADERS.length).setValues([[operationId,id,'OK',now]]);
+  console.log('[POST] guardado correctamente: '+id);
+  return {success:true,orderId:id,created:true,sheet:sh.getName()};
 }
-
+function nextOrderId_(sh){
+  const prefix=Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'MMM').toUpperCase().slice(0,3)+Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy');
+  const rows=readTable_(sh,1);let max=0;
+  rows.forEach(r=>{const match=String(r[0]||'').match(new RegExp('^'+prefix+'(\\d{4})$'));if(match)max=Math.max(max,Number(match[1]));});
+  return prefix+String(max+1).padStart(4,'0');
+}
 function updateBatch_(p){
-  let changes=[];
-  let machines=[];
-  try{ changes=JSON.parse(String(p.changes||'[]')); }catch(_){ throw new Error('El lote de cambios no tiene formato JSON válido'); }
-  try{ machines=JSON.parse(String(p.machines||'[]')); }catch(_){ throw new Error('El lote de máquinas no tiene formato JSON válido'); }
-  if(!Array.isArray(changes)||changes.length>50||!Array.isArray(machines)||machines.length>50) throw new Error('El lote de cambios es inválido o demasiado grande');
-  const lock=LockService.getScriptLock();
-  lock.waitLock(10000);
-  try{
-    changes.forEach(change=>updateOrderUnlocked_(change));
-    machines.forEach(machine=>updateMachine_(machine));
-    return {count:changes.length,machines:machines.length};
-  }finally{ lock.releaseLock(); }
+  let changes=[],machines=[],newOrders=[];
+  try{changes=JSON.parse(String(p.changes||'[]'));}catch(_){throw new Error('El lote de pedidos no tiene JSON válido');}
+  try{machines=JSON.parse(String(p.machines||'[]'));}catch(_){throw new Error('El lote de máquinas no tiene JSON válido');}
+  try{newOrders=JSON.parse(String(p.newOrders||'[]'));}catch(_){throw new Error('El lote de nuevos pedidos no tiene JSON válido');}
+  if(!Array.isArray(changes)||!Array.isArray(machines)||!Array.isArray(newOrders)||changes.length>50||machines.length>50||newOrders.length>50)throw new Error('El lote de cambios es inválido o demasiado grande');
+  const lock=LockService.getScriptLock();lock.waitLock(10000);
+  try{newOrders.forEach(addOrderUnlocked_);changes.forEach(updateOrderUnlocked_);machines.forEach(updateMachineUnlocked_);return {newOrders:newOrders.length,orders:changes.length,machines:machines.length};}finally{lock.releaseLock();}
 }
-
+function updateOrder_(p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{return updateOrderUnlocked_(p);}finally{lock.releaseLock();}}
 function updateOrderUnlocked_(p){
-    const sh=getSS_().getSheetByName(CONFIG.ORDERS_SHEET);
-    if(!sh) throw new Error('No existe PEDIDOS');
-    const id=String(p.id||'');
-    const newDone=Math.max(0,Number(p.done||0));
-    const rows=sh.getRange(2,1,Math.max(0,sh.getLastRow()-1),ORDER_HEADERS.length).getValues();
-    for(let i=0;i<rows.length;i++){
-      if(String(rows[i][0])===id){
-        const previous=Number(rows[i][4]||0);
-        const qty=Number(rows[i][3]||0);
-        const done=Math.min(qty,newDone);
-        const status=done>=qty?'done':done>0?'production':'pending';
-        rows[i][4]=done; rows[i][5]=status; rows[i][8]=new Date();
-        sh.getRange(i+2,1,1,ORDER_HEADERS.length).setValues([rows[i]]);
-        const difference=done-previous;
-        if(difference>0) appendProduction_({
-          id:id,
-          design:String(rows[i][2]||''),
-          units:difference,
-          machine:String(p.machine||p.machineName||''),
-          colors:String(p.colors||''),
-          status:status
-        });
-        return;
-      }
-    }
-    throw new Error('Pedido no encontrado: '+id);
+  const location=findOrderLocation_(p.id);if(!location)throw new Error('Pedido no encontrado: '+String(p.id||''));const sh=location.sheet,found={index:location.index,row:location.row};
+  const row=found.row,qty=Number(row[7]||0),previous=Number(row[8]||0),done=Math.min(qty,Math.max(0,Number(p.done||0)));
+  const status=done>=qty?'COMPLETADO':done>0?'INICIADO':'PENDIENTE';
+  row[8]=done;row[9]=status;row[14]=new Date();if(p.machine)row[10]=String(p.machine);
+  if(status==='INICIADO'&&!row[11])row[11]=new Date();if(status==='COMPLETADO'&&!row[12])row[12]=new Date();
+  sh.getRange(found.index,1,1,ORDER_HEADERS.length).setValues([row]);
+  if(done>previous)appendProductionEvent_({id:String(row[0]),design:String(row[6]||''),units:done-previous,total:done,machine:String(p.machine||row[10]||''),colors:String(p.colors||''),status:status});
+  if(status==='INICIADO'&&row[10])upsertActiveProduction_({id:String(row[0]),design:String(row[6]||''),planned:qty,done:done,machine:String(row[10]),colors:String(p.colors||'')});
+  if(status==='COMPLETADO')removeActiveProduction_(String(row[0]));
+  return {id:String(row[0]),done:done,status:normalizeStatus_(status)};
 }
-
-function appendProduction_(production){
-  const sh=getProductionSheet_();
-  const now=new Date();
-  const date=Utilities.formatDate(now,PRODUCTION_TIMEZONE,'yyyy-MM-dd');
-  sh.appendRow([
-    date,
-    production.id,
-    production.design,
-    production.units,
-    production.machine,
-    production.status==='done'?'Completado':'En producción',
-    production.colors
-  ]);
+function updateMachine_(p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{return updateMachineUnlocked_(p);}finally{lock.releaseLock();}}
+function updateMachineUnlocked_(p){
+  const id=Number(p.machineId||0);if(id<1||id>MACHINE_NAMES.length)throw new Error('Máquina inválida');
+  const sh=ensureSheet_(getSS_(),CONFIG.MACHINES_SHEET,MACHINE_HEADERS),colors=parseColors_(p.colors),orderId=String(p.orderId||'');
+  sh.getRange(id+1,1,1,5).setValues([[id,MACHINE_NAMES[id-1],orderId,JSON.stringify(colors),new Date()]]);
+  if(orderId){
+    const location=findOrderLocation_(orderId);if(!location)throw new Error('Pedido no encontrado: '+orderId);const orders=location.sheet,found={index:location.index,row:location.row};
+    const row=found.row;if(normalizeStatus_(row[9])!=='done'){row[9]='INICIADO';row[10]=MACHINE_NAMES[id-1];row[11]=row[11]||new Date();row[14]=new Date();orders.getRange(found.index,1,1,ORDER_HEADERS.length).setValues([row]);upsertActiveProduction_({id:orderId,design:String(row[6]||''),planned:Number(row[7]||0),done:Number(row[8]||0),machine:MACHINE_NAMES[id-1],colors:JSON.stringify(colors)});}
+  }
+  return {machineId:id,orderId:orderId};
 }
-
-function getProductionSheet_(){
-  const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET);
-  if(!sh) throw new Error('No existe la hoja "'+CONFIG.PRODUCTION_SHEET+'". Ejecutá setup() para crearla.');
-  if(sh.getLastColumn()<PRODUCTION_HEADERS.length) sh.insertColumnsAfter(sh.getLastColumn(),PRODUCTION_HEADERS.length-sh.getLastColumn());
-  const headers=sh.getRange(1,1,1,PRODUCTION_HEADERS.length).getValues()[0].map(String);
-  PRODUCTION_HEADERS.forEach((header,i)=>{
-    if(headers[i].trim()!==header) sh.getRange(1,i+1).setValue(header);
-  });
-  return sh;
+function upsertActiveProduction_(p){
+  const sh=ensureProductionSheet_(getSS_()),rows=readTable_(sh,PRODUCTION_HEADERS.length),id='ACTIVE|'+String(p.id);
+  const values=[Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy-MM-dd'),p.id,p.design,p.planned,p.done,p.machine,'INICIADO',p.colors||'','ACTIVE',id];
+  for(let i=0;i<rows.length;i++)if(String(rows[i][9])===id){sh.getRange(i+2,1,1,PRODUCTION_HEADERS.length).setValues([values]);return;}
+  sh.getRange(sh.getLastRow()+1,1,1,PRODUCTION_HEADERS.length).setValues([values]);
 }
-
-function deleteOrder_(p){
-  const sh=getSS_().getSheetByName(CONFIG.ORDERS_SHEET);
-  if(!sh) throw new Error('No existe PEDIDOS');
-  const id=String(p.id||'');
-  for(let r=sh.getLastRow();r>=2;r--){ if(String(sh.getRange(r,1).getValue())===id){ sh.deleteRow(r); return; } }
-  throw new Error('Pedido no encontrado: '+id);
+function removeActiveProduction_(orderId){
+  const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET);if(!sh||sh.getLastRow()<2)return;
+  const rows=readTable_(sh,PRODUCTION_HEADERS.length);for(let i=rows.length-1;i>=0;i--)if(String(rows[i][9])==='ACTIVE|'+orderId)sh.deleteRow(i+2);
 }
-
+function appendProductionEvent_(p){
+  const sh=ensureProductionSheet_(getSS_()),date=Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy-MM-dd'),eventId='EVENT|'+p.id+'|'+date+'|'+String(p.total),rows=readTable_(sh,PRODUCTION_HEADERS.length);
+  for(let i=0;i<rows.length;i++)if(String(rows[i][9])===eventId)return;
+  sh.getRange(sh.getLastRow()+1,1,1,PRODUCTION_HEADERS.length).setValues([[date,p.id,p.design,0,p.units,p.machine,p.status==='COMPLETADO'?'COMPLETADO':'INICIADO',p.colors||'','HISTORICAL',eventId]]);
+  upsertDailySummary_(date,p.units);
+}
+function upsertDailySummary_(date,units){
+  const sh=ensureSheet_(getSS_(),CONFIG.SUMMARY_SHEET,SUMMARY_HEADERS),rows=readTable_(sh,2);
+  for(let i=0;i<rows.length;i++)if(String(rows[i][0])===date){sh.getRange(i+2,2).setValue(Number(rows[i][1]||0)+Number(units));return;}
+  sh.getRange(sh.getLastRow()+1,1,1,2).setValues([[date,Number(units)]]);
+}
 function getProductionSummary_(){
-  const sh=getProductionSheet_();
-  if(sh.getLastRow()<2) return {};
-  const rows=sh.getRange(2,1,sh.getLastRow()-1,4).getValues();
-  const out={};
-  rows.forEach(r=>{
-    const d=r[0];
-    if(!d)return;
-    const text=String(d);
-    const k=/^\d{4}-\d{2}-\d{2}$/.test(text)
-      ? text
-      : Utilities.formatDate(new Date(d),PRODUCTION_TIMEZONE,'yyyy-MM-dd');
-    out[k]=(Number(out[k]||0)+Number(r[3]||0));
-  });
-  return out;
+  const sh=getSS_().getSheetByName(CONFIG.SUMMARY_SHEET);if(!sh||sh.getLastRow()<2)return {};
+  const out={};readTable_(sh,2).forEach(r=>{if(r[0])out[String(r[0])]=Number(r[1]||0);});return out;
 }
-
-function formatDate_(v){
-  if(!v) return '';
-  if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v)) return Utilities.formatDate(v,Session.getScriptTimeZone(),'yyyy-MM-dd');
-  return String(v);
+function deleteOrder_(p){
+  const location=findOrderLocation_(p.id);if(!location)throw new Error('Pedido no encontrado: '+String(p.id||''));const sh=location.sheet,found={index:location.index,row:location.row};
+  sh.deleteRow(found.index);removeActiveProduction_(String(p.id));return {id:String(p.id),deleted:true};
 }
-function respond_(obj,callback){
-  const text=JSON.stringify(obj);
-  if(callback && /^[A-Za-z_$][\w$]*$/.test(callback)) return ContentService.createTextOutput(callback+'('+text+');').setMimeType(ContentService.MimeType.JAVASCRIPT);
-  return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+function normalizeStatus_(value){
+  const status=String(value||'').toLowerCase();
+  return status==='done'||status==='completado'?'done':status==='production'||status==='started'||status==='iniciado'?'production':'pending';
 }
-function html_(msg){ return HtmlService.createHtmlOutput('<!doctype html><html><body>'+msg+'</body></html>'); }
+function parseColors_(value){try{const parsed=value?JSON.parse(String(value)):[];return Array.isArray(parsed)?Array.from(new Set(parsed)).slice(0,16):[];}catch(_){return [];}}
+function formatDate_(v){if(!v)return '';if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v))return Utilities.formatDate(v,PRODUCTION_TIMEZONE,'yyyy-MM-dd');return String(v);}
+function errorMessage_(err){return err&&err.message?err.message:String(err);}
+function respond_(obj,callback){const text=JSON.stringify(obj);if(callback&&/^[A-Za-z_$][\w$]*$/.test(callback))return ContentService.createTextOutput(callback+'('+text+');').setMimeType(ContentService.MimeType.JAVASCRIPT);return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);}
