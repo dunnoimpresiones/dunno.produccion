@@ -1061,32 +1061,6 @@ function postAPI(
           console.info("[Sheets] Respuesta POST recibida", {action});
           resolve({ok:true, action});
         }
-
-        function getOperationStatusV2(operationId) {
-          return new Promise((resolve, reject) => {
-            const callback = "dunnoOperation_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-            const script = document.createElement("script");
-            let finished = false;
-            const cleanup = () => {
-              script.remove();
-              delete window[callback];
-            };
-            const finish = (error, data) => {
-              if (finished) return;
-              finished = true;
-              cleanup();
-              if (error) reject(error);
-              else resolve(data);
-            };
-            window[callback] = data => finish(null, data);
-            script.onerror = () => finish(new Error("No se pudo confirmar el pedido en Google Apps Script"));
-            script.src = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
-              "&action=operationStatus&operationId=" + encodeURIComponent(operationId) +
-              "&callback=" + callback + "&_=" + Date.now();
-            document.head.appendChild(script);
-            setTimeout(() => finish(new Error("Google Apps Script no confirmó el pedido a tiempo")), 15000);
-          });
-        }
       };
       iframe.onload = () => setTimeout(() => finish(), 500);
       iframe.onerror = () => finish(new Error("No se pudo conectar con Google Apps Script"));
@@ -1098,6 +1072,37 @@ function postAPI(
     }
   );
 
+}
+
+function getOperationStatusV2(operationId) {
+  return new Promise((resolve, reject) => {
+    const callback = "dunnoOperation_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const script = document.createElement("script");
+    let finished = false;
+    const cleanup = () => {
+      script.remove();
+      delete window[callback];
+    };
+    const finish = (error, data) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve(data);
+    };
+    if (!operationId) {
+      finish(new Error("Falta operationId para consultar el estado"));
+      return;
+    }
+    window[callback] = data => finish(null, data);
+    script.onerror = () => finish(new Error("No se pudo confirmar el pedido en Google Apps Script"));
+    script.src = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
+      "&action=operationStatus&operationId=" + encodeURIComponent(operationId) +
+      "&callback=" + callback + "&_=" + Date.now();
+    console.info("[Sheets] Consultando estado de operación", {operationId, url:script.src});
+    document.head.appendChild(script);
+    setTimeout(() => finish(new Error("Google Apps Script no confirmó el pedido a tiempo")), 15000);
+  });
 }
 
 function testConnection() {
@@ -1258,24 +1263,21 @@ async function addOrder() {
 
 
   try {
-    console.info("[Sheets] POST iniciado", operationId);
+    console.info("[Sheets] POST iniciado", {operationId, client, design, qty, date, priority});
     await postAPI("addOrder", {
       operationId, client, design, qty, date, priority, contact:"", product:""
     });
     let result = await getOperationStatusV2(operationId);
-    for (let attempt=0; result.pending && attempt<4; attempt++) {
+    for (let attempt=0; result && result.pending && attempt<4; attempt++) {
       await wait(1000);
       result = await getOperationStatusV2(operationId);
     }
-    if (!result.ok || !result.orderId) throw new Error(result.error || "Google Sheets no confirmó el pedido");
+    if (!result || !result.ok || !result.orderId) throw new Error((result && result.error) || "Google Sheets no confirmó el pedido");
     console.info("[Sheets] POST completado", result);
     orders=[...orders,{id:result.orderId,client,design,qty,done:0,date,priority,status:"pending"}];
     saveCache();
     render();
     closeModal();
-    document
-      .getElementById("fOrder").value = "";
-
 
     document
       .getElementById(

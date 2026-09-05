@@ -82,7 +82,7 @@ function doGet(e){
       console.log('Prueba de conexión procesada');
       return respond_({ok:true,success:true,message:'Google Apps Script conectado',timestamp:new Date().toISOString()},p.callback);
     }
-    if(p.action==='operationStatus')return respond_(operationStatus_(p),p.callback);
+    if(p.action==='operationStatus' || p.action==='getOperationStatusV2')return respond_(operationStatusCompat_(p),p.callback);
     console.log('Procesando GET: '+String(p.action||'dashboard'));
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
     const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()};
@@ -115,12 +115,25 @@ function operationStatus_(p){
   const operationId=String(p.operationId||'').trim();
   if(!operationId)return {ok:false,error:'Falta operationId'};
   const sh=getSS_().getSheetByName(CONFIG.OPERATIONS_SHEET);
-  if(!sh||sh.getLastRow()<2)return {ok:true,pending:true};
+  if(!sh||sh.getLastRow()<2)return {ok:true,pending:true,processed:false};
   const rows=readTable_(sh,OPERATION_HEADERS.length);
   for(let i=0;i<rows.length;i++)if(String(rows[i][0])===operationId){
-    return {ok:String(rows[i][2])==='OK',pending:false,orderId:String(rows[i][1]||''),error:String(rows[i][2]||'')};
+    const status=String(rows[i][2]||'');
+    return {ok:status==='OK',pending:false,processed:status==='OK',success:status==='OK',orderId:String(rows[i][1]||''),error:status==='OK'?'':status};
   }
-  return {ok:true,pending:true};
+  return {ok:true,pending:true,processed:false,success:true};
+}
+function operationStatusCompat_(p){
+  const response=operationStatus_(p);
+  return {
+    success: !!(response && response.success !== false && response.ok !== false),
+    processed: !!(response && response.processed),
+    ok: !!(response && response.ok !== false),
+    pending: !!(response && response.pending),
+    orderId: response && response.orderId ? String(response.orderId) : '',
+    error: response && response.error ? String(response.error) : '',
+    message: response && response.processed ? 'Operación procesada' : 'Operación pendiente'
+  };
 }
 function readTable_(sh,width){return sh.getLastRow()<2?[]:sh.getRange(2,1,sh.getLastRow()-1,width).getValues();}
 function getOrders_(){
