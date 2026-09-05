@@ -774,6 +774,16 @@ function installMachineStyles() {
     html.dark .machine-order-progress{background:#222!important}
     html.dark .machine-order-progress>div{background:#fff!important}
     html.dark .color-add{background:#000!important;color:#fff!important;border:1px solid #fff!important}
+
+    /* Filas compactas: evita que las acciones invadan el resumen lateral. */
+    @media (min-width:901px){
+      .machine-card{
+        grid-template-columns:80px minmax(150px,1fr) 104px minmax(145px,1fr) minmax(100px,145px) minmax(140px,max-content)!important;
+        gap:10px!important;
+      }
+      .machine-quick-actions{justify-content:flex-end!important}
+    }
+    .workshop-message{margin-top:10px;font-weight:800;color:var(--text,#fff);font-size:13px}
   `;
 
   document
@@ -2465,11 +2475,7 @@ function renderMachineCard(machine){
   ).join("");
   const quick=order?`
     <div class="machine-quick-actions">
-      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',-5)">−5</button>
-      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',-1)">−1</button>
-      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',1)">+1</button>
-      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',5)">+5</button>
-      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',10)">+10</button>
+      <button class="machine-mini-btn" onclick="setDone('${js(order.id)}',20)">+20</button>
       <button class="machine-complete-btn" onclick="setDone('${js(order.id)}','ALL')">Completar</button>
     </div>`:"";
   return `<div class="machine-card">
@@ -2502,6 +2508,7 @@ function renderDashboardV2(){
   const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;
   const inactive=machines.length-active;
   const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);
+  const workshopMessage=workshopMessageV2(inactive,machines.length);
   const production=productionDailyV2||{};
   const days=[];
 
@@ -2530,6 +2537,7 @@ function renderDashboardV2(){
         <div class="dashboard-title">Estado del taller</div>
         <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div>
         <div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div>
+        <div class="workshop-message">${workshopMessage}</div>
       </div>
       <div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div>
     </div>
@@ -2547,6 +2555,48 @@ function renderDashboardV2(){
     </div>`;
 }
 const MOTIVATION_KEY_V2="dunno_motivacion_diaria_v2";
+const WORKSHOP_MESSAGE_KEY_V2="dunno_estado_taller_v2";
+const WORKSHOP_MESSAGES_V2={
+  quiet:[
+    "Dale pa, así no vas a pagar las deudas.",
+    "Rey, si seguís así vas a vender medias.",
+    "Hay más silencio que en una biblioteca. Prendé una máquina.",
+    "Las impresoras están mirando el techo, jefe.",
+    "Una máquina laburando no hace verano. Metamos ritmo."
+  ],
+  middle:[
+    "Vamos tomando ritmo, pero todavía hay bobinas mirando de afuera.",
+    "Mitad taller, mitad siesta. Metele un poquito más.",
+    "Bien ahí, pero todavía queda lugar para que arranquen más máquinas.",
+    "El motor ya calentó: ahora falta pisar el acelerador.",
+    "Vamos bien, pero esas máquinas libres no se van a prender solas."
+  ],
+  near:[
+    "Casi a pleno. Una empujadita más y rompemos todo.",
+    "Está picante el taller. Falta poquito para el modo fábrica.",
+    "Hermoso ritmo: quedan pocas máquinas mirando desde el banco.",
+    "Ya se siente el ruido lindo de las impresoras trabajando.",
+    "Estamos cerca del pleno, dale que so vo."
+  ],
+  full:[
+    "A pleeeeeeeno. Así se trabaja.",
+    "Dale que so vo: taller en modo fábrica.",
+    "Todas prendidas. Hoy las bobinas no descansan.",
+    "Taller completo, equipo completo, vamos con todo.",
+    "Máquinas a full: que no se enfríe ese ritmo."
+  ]
+};
+function workshopMessageV2(inactive,total){
+  const bucket=inactive===0?"full":inactive<=2?"near":inactive<=Math.ceil(total/2)?"middle":"quiet";
+  const today=todayV2();
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(WORKSHOP_MESSAGE_KEY_V2)||"{}")}catch(_){ }
+  if(saved.date===today&&saved.bucket===bucket&&saved.phrase)return saved.phrase;
+  const options=WORKSHOP_MESSAGES_V2[bucket];
+  const phrase=options[Math.floor(Math.random()*options.length)];
+  try{localStorage.setItem(WORKSHOP_MESSAGE_KEY_V2,JSON.stringify({date:today,bucket,phrase}))}catch(_){ }
+  return phrase;
+}
 const MOTIVATION_SETS_V2={
   "0":["Dale que arrancamos 🚀","Todo empieza con la primera impresión.","Vamos a poner esas máquinas a trabajar.","Arrancamos tranqui, pero arrancamos 🔥","Hoy se viene jornada de taller.","Primero una impresión, después vemos 😎","Que empiece el ruido de las máquinas.","Día nuevo, impresiones nuevas.","Vamos a llenar esas bobinas de trabajo.","El taller está listo. ¿Y nosotros? 😏","Hoy también se fabrica.","A darle vida a esas ideas.","Las máquinas están esperando 🔥","Ponemos primera y arrancamos.","Un buen día empieza con una impresión."],
   "1-99":["Ya arrancamos 🔥","El taller empieza a tomar ritmo.","Primeras impresiones del día 💪","De a poco se llena la mesa.","Ya hay movimiento en el taller.","La primera tanda ya está saliendo.","Arrancamos suave, pero con estilo.","Esto recién empieza 🚀","Unas cuantas impresiones y calentamos motores.","Ya estamos fabricando 🔥","El taller empieza a despertar.","Poco a poco, pedido a pedido.","Las máquinas ya están trabajando.","Buen comienzo para la jornada.","Ya salió la primera tanda."],
