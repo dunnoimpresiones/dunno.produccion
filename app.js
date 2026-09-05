@@ -932,6 +932,13 @@ async function syncFromSheets(
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
       machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
+      machines=machines.map(machine=>{
+        const pending=pendingMachinesV2[String(machine.id)];
+        if(!pending)return machine;
+        let colors=[];
+        try{colors=JSON.parse(pending.colors||"[]")}catch(error){console.error("Colores pendientes inválidos:",error)}
+        return {...machine,orderId:pending.orderId,colors:Array.isArray(colors)?colors:[]};
+      });
       saveMachines();
     }
 
@@ -942,7 +949,7 @@ async function syncFromSheets(
 
 
     render();
-    if(!pendingListV2().length){
+    if(!pendingListV2().length&&!pendingMachineListV2().length){
       setLastSyncV2(Date.now());
       if(showError)showSyncStatusV2("🟢 Sincronizado");
     }else{
@@ -1021,7 +1028,7 @@ function cleanMachineOrders() {
   if(changed){
     saveMachines();
     machines.forEach(m=>{
-      if(!m.orderId) postAPI("updateMachine",{machineId:m.id,orderId:"",colors:JSON.stringify(m.colors||[])}).catch(()=>{});
+      if(!m.orderId) queueMachineChangeV2(m);
     });
   }
 }
@@ -1360,14 +1367,7 @@ async function setDone(
   queueOrderChangeV2(order,productionContext);
   if(order.status==="done"){
     completedMachines.forEach(machine=>{
-      retryPostV2("updateMachine",{
-        machineId:machine.id,
-        orderId:"",
-        colors:JSON.stringify(machine.colors||[])
-      },error=>{
-        console.error("No se pudo liberar la máquina:",error);
-        alert("El pedido quedó completado, pero no se pudo liberar la máquina "+machine.name+".\n\n"+syncErrorMessageV2(error));
-      }).catch(error=>console.error("Sincronización de máquina:",error));
+      queueMachineChangeV2(machine);
     });
   }
 
@@ -1421,9 +1421,7 @@ async function updateMachineOrder(machineId, orderId) {
   machine.orderId=String(orderId||"");
   saveMachines();
   renderMachines();
-  try{
-    await postAPI("updateMachine",{machineId:machine.id,orderId:machine.orderId,colors:JSON.stringify(machine.colors||[])});
-  }catch(e){ console.error("No se pudo guardar la máquina:",e); }
+  queueMachineChangeV2(machine);
 }
 
 
@@ -2232,12 +2230,14 @@ const DUNNO_COLORS = [
 ];
 const DAILY_KEY_V2="dunno_produccion_diaria_v2";
 const PENDING_CHANGES_KEY_V2="dunno_produccion_pending_changes_v2";
+const PENDING_MACHINES_KEY_V2="dunno_produccion_pending_machines_v2";
 const LAST_SYNC_KEY_V2="dunno_produccion_last_sync_v2";
 const BATCH_DELAY_V2=2500;
 let savingOrdersV2={};let openColorMachineIdV2=null;
 let draftMachineColorsV2=null;
 let optimisticOrdersV2={};
 let pendingChangesV2=loadPendingChangesV2();
+let pendingMachinesV2=loadPendingMachinesV2();
 let pendingFlushTimerV2=null;
 let flushingPendingV2=false;
 let pendingRetryTimerV2=null;
@@ -2252,7 +2252,18 @@ function savePendingChangesV2(){
   try{localStorage.setItem(PENDING_CHANGES_KEY_V2,JSON.stringify(pendingChangesV2))}
   catch(error){console.error("No se pudieron guardar cambios pendientes:",error)}
 }
+function loadPendingMachinesV2(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(PENDING_MACHINES_KEY_V2)||"{}");
+    return saved&&typeof saved==="object"?saved:{};
+  }catch(error){console.error("No se pudieron cargar cambios de máquinas:",error);return {}}
+}
+function savePendingMachinesV2(){
+  try{localStorage.setItem(PENDING_MACHINES_KEY_V2,JSON.stringify(pendingMachinesV2))}
+  catch(error){console.error("No se pudieron guardar cambios de máquinas:",error)}
+}
 function pendingListV2(){return Object.values(pendingChangesV2)}
+function pendingMachineListV2(){return Object.values(pendingMachinesV2)}
 function setLastSyncV2(value){
   try{localStorage.setItem(LAST_SYNC_KEY_V2,String(value))}catch(error){console.error("No se pudo guardar la última sincronización:",error)}
   const el=document.getElementById("lastSyncTime");
@@ -2280,7 +2291,7 @@ function showSyncStatusV2(message,isError=false){
 }
 function schedulePendingFlushV2(delay=BATCH_DELAY_V2){
   clearTimeout(pendingFlushTimerV2);
-  if(!pendingListV2().length)return;
+  if(!pendingListV2().length&&!pendingMachineListV2().length)return;
   pendingFlushTimerV2=setTimeout(flushPendingChangesV2,delay);
 }
 function queueOrderChangeV2(order,productionContext={}){
@@ -2299,12 +2310,25 @@ function queueOrderChangeV2(order,productionContext={}){
   showSyncStatusV2("🟡 Guardando...");
   schedulePendingFlushV2();
 }
+function queueMachineChangeV2(machine){
+  const key=String(machine.id);
+  pendingMachinesV2[key]={
+    machineId:machine.id,
+    orderId:String(machine.orderId||""),
+    colors:JSON.stringify(Array.from(new Set(machine.colors||[]))),
+    version:Date.now()+"-"+Math.random().toString(36).slice(2)
+  };
+  savePendingMachinesV2();
+  showSyncStatusV2("🟡 Guardando...");
+  schedulePendingFlushV2();
+}
 async function flushPendingChangesV2(){
   clearTimeout(pendingFlushTimerV2);
   pendingRetryTimerV2=null;
-  if(flushingPendingV2||!pendingListV2().length)return;
+  if(flushingPendingV2||(!pendingListV2().length&&!pendingMachineListV2().length))return;
   flushingPendingV2=true;
   const batch=pendingListV2().map(change=>({...change}));
+  const machineBatch=pendingMachineListV2().map(change=>({...change}));
   showSyncStatusV2("🟡 Guardando...");
   try{
     const delays=[0,2000,5000];
@@ -2316,7 +2340,11 @@ async function flushPendingChangesV2(){
         done:change.done,
         machine:change.machine||"",
         colors:change.colors||""
-      }))) });break}
+      }))),machines:JSON.stringify(machineBatch.map(machine=>({
+        machineId:machine.machineId,
+        orderId:machine.orderId,
+        colors:machine.colors
+      })))});break}
       catch(error){if(attempt===delays.length-1)throw error}
     }
     if(!response?.ok)throw new Error("Google Apps Script no confirmó el lote");
@@ -2327,9 +2355,14 @@ async function flushPendingChangesV2(){
         delete savingOrdersV2[String(change.id)];
       }
     });
+    machineBatch.forEach(change=>{
+      const current=pendingMachinesV2[String(change.machineId)];
+      if(current?.version===change.version)delete pendingMachinesV2[String(change.machineId)];
+    });
     savePendingChangesV2();
-    if(!pendingListV2().length)setLastSyncV2(Date.now());
-    showSyncStatusV2(pendingListV2().length?"🟡 Guardando...":"🟢 Sincronizado");
+    savePendingMachinesV2();
+    if(!pendingListV2().length&&!pendingMachineListV2().length)setLastSyncV2(Date.now());
+    showSyncStatusV2(pendingListV2().length||pendingMachineListV2().length?"🟡 Guardando...":"🟢 Sincronizado");
   }catch(error){
     console.error("Error sincronizando lote:",error);
     showSyncStatusV2("🔴 Error al sincronizar",true);
@@ -2337,7 +2370,7 @@ async function flushPendingChangesV2(){
     pendingRetryTimerV2=setTimeout(flushPendingChangesV2,10000);
   }finally{
     flushingPendingV2=false;
-    if(pendingListV2().length&&!pendingRetryTimerV2)schedulePendingFlushV2();
+    if((pendingListV2().length||pendingMachineListV2().length)&&!pendingRetryTimerV2)schedulePendingFlushV2();
   }
 }
 
@@ -2347,7 +2380,7 @@ async function retryPostV2(action,data,onFailure){
     try{
       if(attempt)await wait(attempt*2000);
       const response=await postAPI(action,data);
-      if(!pendingListV2().length){
+      if(!pendingListV2().length&&!pendingMachineListV2().length){
         setLastSyncV2(Date.now());
         showSyncStatusV2("🟢 Sincronizado");
       }else{
@@ -2381,7 +2414,7 @@ function renderColorPaletteV2(){
   const p=document.getElementById("colorPopover");
   if(!m||!p)return;
   const selected=draftMachineColorsV2||[];
-  p.innerHTML=`<div class="palette-head"><span>Colores — ${esc(m.name)}</span><span class="palette-count">${selected.length}/16</span></div><div class="palette-grid">${DUNNO_COLORS.map(c=>`<button type="button" class="palette-item ${selected.includes(c[0])?"selected":""}" style="background:${c[1]}" title="${escAttr(c[0])}" onclick="toggleMachineColorV2(${m.id},'${js(c[0])}');event.stopPropagation()"></button>`).join("")}</div><div class="palette-actions"><button type="button" class="palette-cancel" onclick="closeColorPaletteV2()">Cancelar</button><button type="button" class="palette-apply" onclick="applyMachineColorsV2()">Aplicar</button></div>`;
+  p.innerHTML=`<div class="palette-head"><span>Colores — ${esc(m.name)}</span><span class="palette-count">${selected.length}/16</span></div><div class="palette-grid">${DUNNO_COLORS.map(c=>`<button type="button" class="palette-item ${selected.includes(c[0])?"selected":""}" style="background:${c[1]}" title="${escAttr(c[0])}" onclick="toggleMachineColorV2(${m.id},'${js(c[0])}');event.stopPropagation()"></button>`).join("")}</div><div class="palette-actions"><button type="button" class="palette-clear" ${selected.length?"":"disabled"} onclick="clearDraftMachineColorsV2();event.stopPropagation()">Borrar todos</button><button type="button" class="palette-apply" onclick="applyMachineColorsV2()">Aceptar</button><button type="button" class="palette-cancel" onclick="closeColorPaletteV2()">Cancelar</button></div>`;
 }
 function toggleMachineColorV2(machineId,name){
   if(Number(machineId)!==Number(openColorMachineIdV2))return;
@@ -2390,6 +2423,10 @@ function toggleMachineColorV2(machineId,name){
   if(index>=0)colors.splice(index,1);
   else if(colors.length<16)colors.push(name);
   else {alert("Esta impresora ya tiene 16 colores seleccionados.");return}
+  renderColorPaletteV2();
+}
+function clearDraftMachineColorsV2(){
+  draftMachineColorsV2=[];
   renderColorPaletteV2();
 }
 function openColorPaletteV2(machineId){
@@ -2408,12 +2445,8 @@ function applyMachineColorsV2(){
   m.colors=Array.from(new Set((draftMachineColorsV2||[]).slice(0,16)));
   saveMachines();
   render();
-  const payload={machineId:m.id,orderId:m.orderId||"",colors:JSON.stringify(m.colors)};
   closeColorPaletteV2();
-  retryPostV2("updateMachine",payload,error=>{
-    showSyncStatusV2("🔴 Error al sincronizar",true);
-    console.error("No se pudieron guardar los colores:",error);
-  }).catch(error=>console.error("Sincronización de colores:",error));
+  queueMachineChangeV2(m);
 }
 function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null;draftMachineColorsV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
@@ -2629,7 +2662,7 @@ function renderWorkshopSidebarV3(){
 }
 
 normalizeMachinesV2();initThemeV2();installMachineStyles();render();setupSearch();loadLastSyncV2();
-if(pendingListV2().length){
+if(pendingListV2().length||pendingMachineListV2().length){
   showSyncStatusV2("🟡 Guardando...");
   schedulePendingFlushV2(500);
 }else{
@@ -2659,5 +2692,9 @@ async function realtimeSyncV2(){
 setInterval(realtimeSyncV2, REALTIME_SYNC_INTERVAL_V2);
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) realtimeSyncV2();
+  if (!document.hidden){
+    if(pendingListV2().length||pendingMachineListV2().length)flushPendingChangesV2();
+    realtimeSyncV2();
+  }
 });
+window.addEventListener("online",()=>flushPendingChangesV2());
