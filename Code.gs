@@ -140,13 +140,16 @@ function updateOrder_(p){
 
 function updateBatch_(p){
   let changes=[];
+  let machines=[];
   try{ changes=JSON.parse(String(p.changes||'[]')); }catch(_){ throw new Error('El lote de cambios no tiene formato JSON válido'); }
-  if(!Array.isArray(changes)||changes.length>50) throw new Error('El lote de cambios es inválido o demasiado grande');
+  try{ machines=JSON.parse(String(p.machines||'[]')); }catch(_){ throw new Error('El lote de máquinas no tiene formato JSON válido'); }
+  if(!Array.isArray(changes)||changes.length>50||!Array.isArray(machines)||machines.length>50) throw new Error('El lote de cambios es inválido o demasiado grande');
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
   try{
     changes.forEach(change=>updateOrderUnlocked_(change));
-    return {count:changes.length};
+    machines.forEach(machine=>updateMachine_(machine));
+    return {count:changes.length,machines:machines.length};
   }finally{ lock.releaseLock(); }
 }
 
