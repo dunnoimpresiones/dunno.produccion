@@ -9,18 +9,20 @@ const CONFIG = {
 };
 
 const ORDER_HEADERS = ['ID','Fecha','Hora','Cliente','Contacto','Producto','Diseño','Cantidad','Producidos','Estado','Máquina','Fecha_inicio','Fecha_completado','Prioridad','Actualizado'];
-const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Cantidad a producir','Cantidad realizada','Máquina','Estado','Colores','Tipo','ID_PRODUCCION'];
+const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Cantidad a producir','Cantidad realizada','Máquina','Estado','Colores','Tipo','ID_PRODUCCION','TOTAL'];
 const SUMMARY_HEADERS = ['Fecha','Total_produccion'];
 const MACHINE_HEADERS = ['ID','Maquina','Pedido','Colores','Actualizado'];
 const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
 const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
+const PRODUCTION_TOTAL_LABEL = 'TOTAL GENERAL';
 
 function getSS_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
 function setup(){
   const ss=getSS_();
   currentOrdersSheet_();
   ensureProductionSheet_(ss);
+  recalculateProductionTotal_();
   ensureSheet_(ss,CONFIG.SUMMARY_SHEET,SUMMARY_HEADERS);
   ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
   const sh=ensureSheet_(ss,CONFIG.MACHINES_SHEET,MACHINE_HEADERS);
@@ -43,7 +45,7 @@ function ensureProductionSheet_(ss){
   if(sh.getMaxColumns()<PRODUCTION_HEADERS.length)sh.insertColumnsAfter(sh.getMaxColumns(),PRODUCTION_HEADERS.length-sh.getMaxColumns());
   sh.getRange(1,1,1,PRODUCTION_HEADERS.length).setValues([PRODUCTION_HEADERS]);
   if(legacy&&oldRows.length){
-    const migrated=oldRows.map((r,i)=>[r[0],r[1],r[2],0,Number(r[3]||0),r[4],r[5],r[6],'HISTORICAL','LEGACY|'+String(i+2)]);
+    const migrated=oldRows.map((r,i)=>[r[0],r[1],r[2],0,Number(r[3]||0),r[4],r[5],r[6],'HISTORICAL','LEGACY|'+String(i+2),'']);
     sh.getRange(2,1,migrated.length,PRODUCTION_HEADERS.length).setValues(migrated);
   }
   sh.setFrozenRows(1);return sh;
@@ -85,7 +87,7 @@ function doGet(e){
     if(p.action==='operationStatus' || p.action==='getOperationStatusV2')return respond_(operationStatusCompat_(p),p.callback);
     console.log('Procesando GET: '+String(p.action||'dashboard'));
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
-    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()};
+    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),productionTotal:getProductionDailyTotal_(),machines:getMachines_()};
     console.log('Operación GET terminada');
     return respond_(result,p.callback);
   }catch(err){console.error('Error GET: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
@@ -227,19 +229,45 @@ function updateMachineUnlocked_(p){
 }
 function upsertActiveProduction_(p){
   const sh=ensureProductionSheet_(getSS_()),rows=readTable_(sh,PRODUCTION_HEADERS.length),id='ACTIVE|'+String(p.id);
-  const values=[Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy-MM-dd'),p.id,p.design,p.planned,p.done,p.machine,'INICIADO',p.colors||'','ACTIVE',id];
-  for(let i=0;i<rows.length;i++)if(String(rows[i][9])===id){sh.getRange(i+2,1,1,PRODUCTION_HEADERS.length).setValues([values]);return;}
+  const values=[Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy-MM-dd'),p.id,p.design,p.planned,p.done,p.machine,'INICIADO',p.colors||'','ACTIVE',id,''];
+  for(let i=0;i<rows.length;i++)if(String(rows[i][9])===id){sh.getRange(i+2,1,1,PRODUCTION_HEADERS.length).setValues([values]);recalculateProductionTotal_();return;}
   sh.getRange(sh.getLastRow()+1,1,1,PRODUCTION_HEADERS.length).setValues([values]);
+  recalculateProductionTotal_();
 }
 function removeActiveProduction_(orderId){
   const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET);if(!sh||sh.getLastRow()<2)return;
-  const rows=readTable_(sh,PRODUCTION_HEADERS.length);for(let i=rows.length-1;i>=0;i--)if(String(rows[i][9])==='ACTIVE|'+orderId)sh.deleteRow(i+2);
+  const rows=readTable_(sh,PRODUCTION_HEADERS.length);let removed=false;
+  for(let i=rows.length-1;i>=0;i--)if(String(rows[i][9])==='ACTIVE|'+orderId){sh.deleteRow(i+2);removed=true;}
+  if(removed)recalculateProductionTotal_();
 }
 function appendProductionEvent_(p){
   const sh=ensureProductionSheet_(getSS_()),date=Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy-MM-dd'),eventId='EVENT|'+p.id+'|'+date+'|'+String(p.total),rows=readTable_(sh,PRODUCTION_HEADERS.length);
   for(let i=0;i<rows.length;i++)if(String(rows[i][9])===eventId)return;
-  sh.getRange(sh.getLastRow()+1,1,1,PRODUCTION_HEADERS.length).setValues([[date,p.id,p.design,0,p.units,p.machine,p.status==='COMPLETADO'?'COMPLETADO':'INICIADO',p.colors||'','HISTORICAL',eventId]]);
+  sh.getRange(sh.getLastRow()+1,1,1,PRODUCTION_HEADERS.length).setValues([[date,p.id,p.design,0,p.units,p.machine,p.status==='COMPLETADO'?'COMPLETADO':'INICIADO',p.colors||'','HISTORICAL',eventId,'']]);
   upsertDailySummary_(date,p.units);
+}
+function recalculateProductionTotal_(){
+  const sh=ensureProductionSheet_(getSS_()),rows=readTable_(sh,PRODUCTION_HEADERS.length);
+  const total=rows.reduce((sum,row)=>sum+(String(row[8]||'')==='ACTIVE'?Number(row[3]||0):0),0);
+  let totalRow=-1;
+  for(let i=0;i<rows.length;i++){
+    if(String(rows[i][0]||'')===PRODUCTION_TOTAL_LABEL&&String(rows[i][9]||'')==='TOTAL'){
+      totalRow=i+2;
+      break;
+    }
+  }
+  const values=[PRODUCTION_TOTAL_LABEL,'','','','','','','','SUMMARY','TOTAL',total];
+  if(totalRow<0)sh.getRange(sh.getLastRow()+1,1,1,PRODUCTION_HEADERS.length).setValues([values]);
+  else sh.getRange(totalRow,1,1,PRODUCTION_HEADERS.length).setValues([values]);
+  return total;
+}
+function getProductionDailyTotal_(){
+  const sh=ensureProductionSheet_(getSS_()),total=recalculateProductionTotal_();
+  const rows=readTable_(sh,PRODUCTION_HEADERS.length);
+  for(let i=0;i<rows.length;i++){
+    if(String(rows[i][0]||'')===PRODUCTION_TOTAL_LABEL&&String(rows[i][9]||'')==='TOTAL')return Number(rows[i][10]||0);
+  }
+  return total;
 }
 function upsertDailySummary_(date,units){
   const sh=ensureSheet_(getSS_(),CONFIG.SUMMARY_SHEET,SUMMARY_HEADERS),rows=readTable_(sh,2);

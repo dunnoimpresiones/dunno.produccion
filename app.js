@@ -63,6 +63,7 @@ let machines = [];
 
 // Producción diaria sincronizada con Google Sheets
 let productionDailyV2 = {};
+let productionTotalV2 = 0;
 
 
 // =====================================================
@@ -892,6 +893,9 @@ async function syncFromSheets(
       (!Array.isArray(result) && result.production)
         ? result.production
         : productionDailyV2;
+    productionTotalV2 = !Array.isArray(result)
+      ? Number(result.productionTotal || 0)
+      : 0;
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
       machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
@@ -2455,11 +2459,6 @@ function dateKeyV2(date){
   const d=String(date.getDate()).padStart(2,"0");
   return `${y}-${m}-${d}`;
 }
-function productionUnitsForTodayV2(production){
-  const value=production&&production[todayV2()];
-  if(value&&typeof value==="object")return Number(value.units||0);
-  return Number(value||0);
-}
 function todayV2(){return dateKeyV2(new Date())}
 function addDailyV2(units){if(units<=0)return;const d=loadDailyV2(),k=todayV2();if(!d[k])d[k]={units:0};d[k].units=(d[k].units||0)+Number(units);saveDailyV2(d)}
 function toggleTheme(){document.documentElement.classList.toggle("dark");localStorage.setItem("dunno_produccion_theme",document.documentElement.classList.contains("dark")?"dark":"light");updateThemeButtonV2()}
@@ -2572,7 +2571,7 @@ function renderDashboardV2(){
     });
   }
 
-  const today=productionUnitsForTodayV2(production);
+  const today=productionTotalV2;
   const yesterday=days[days.length-2].units;
   const weeklyTotal=days.reduce((sum,day)=>sum+day.units,0);
   const weeklyAverage=Math.round(weeklyTotal/days.length);
