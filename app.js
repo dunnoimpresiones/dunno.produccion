@@ -1004,25 +1004,265 @@ function cleanMachineOrders() {
 // POST
 // =====================================================
 
-function postAPI(action, data = {}) {
-  return new Promise((resolve, reject) => {
-    const iframe = document.createElement("iframe");
-    const form = document.createElement("form");
-    const name = "dunno_post_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    iframe.name = name; iframe.style.display = "none";
-    form.method = "POST"; form.action = CONFIG.API_URL; form.target = name; form.style.display = "none";
-    addFormField(form, "token", CONFIG.TOKEN); addFormField(form, "action", action);
-    Object.keys(data).forEach(key => addFormField(form, key, data[key]));
-    document.body.appendChild(iframe); document.body.appendChild(form);
-    let finished = false;
-    const cleanup = () => setTimeout(() => { form.remove(); iframe.remove(); }, 300);
-    const fail = message => { if(finished)return; finished=true; cleanup(); reject(new Error(message)); };
-    iframe.onload = () => { if(finished)return; finished=true; cleanup(); resolve({ok:true,submitted:true}); };
-    iframe.onerror = () => fail("No se pudo enviar la solicitud a Google Apps Script");
-    setTimeout(() => { if(!finished)fail("Tiempo de espera agotado al enviar la solicitud a Google Apps Script"); },10000);
-    form.submit();
-  });
+// Se declara antes de postAPI para que toda llamada POST pueda crear sus
+// campos ocultos, incluso si el archivo se carga parcialmente o se reordena.
+function addFormField(
+  form,
+  name,
+  value
+) {
+
+  const input =
+    document.createElement(
+      "input"
+    );
+
+  input.type =
+    "hidden";
+
+  input.name =
+    name;
+
+  input.value =
+    value ?? "";
+
+  form.appendChild(
+    input
+  );
+
 }
+
+function postAPI(
+  action,
+  data = {}
+) {
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+      const iframe =
+        document.createElement(
+          "iframe"
+        );
+
+
+      iframe.name =
+        "dunno_post_" +
+        Date.now();
+
+
+      iframe.style.display =
+        "none";
+
+
+      document
+        .body
+        .appendChild(
+          iframe
+        );
+
+
+      const form =
+        document.createElement(
+          "form"
+        );
+
+
+      form.method =
+        "POST";
+
+
+      form.action =
+        CONFIG.API_URL;
+
+
+      form.target =
+        iframe.name;
+
+
+      form.style.display =
+        "none";
+
+
+      addFormField(
+        form,
+        "token",
+        CONFIG.TOKEN
+      );
+
+
+      addFormField(
+        form,
+        "action",
+        action
+      );
+
+
+      Object.keys(data)
+        .forEach(
+          key => {
+
+            addFormField(
+              form,
+              key,
+              data[key]
+            );
+
+          }
+        );
+
+
+      document
+        .body
+        .appendChild(
+          form
+        );
+
+
+      let finished =
+        false;
+
+
+      function finish() {
+
+        if (
+          finished
+        ) {
+
+          return;
+
+        }
+
+
+        finished =
+          true;
+
+
+        setTimeout(
+          () => {
+
+            form.remove();
+
+            iframe.remove();
+
+          },
+          500
+        );
+
+
+        resolve({
+          ok: true
+        });
+
+      }
+
+
+      iframe.onload =
+        function() {
+
+          finish();
+
+        };
+
+
+      iframe.onerror =
+        function() {
+
+          if (
+            finished
+          ) {
+
+            return;
+
+          }
+
+
+          finished =
+            true;
+
+
+          form.remove();
+
+          iframe.remove();
+
+
+          reject(
+            new Error(
+              "No se pudo enviar el pedido"
+            )
+          );
+
+        };
+
+
+      form.submit();
+
+
+      setTimeout(
+        () => {
+
+          finish();
+
+        },
+        5000
+      );
+
+    }
+  );
+
+}
+
+
+// =====================================================
+// MODAL
+// =====================================================
+
+function openOrderModal() {
+
+  const modal =
+    document.getElementById(
+      "modal"
+    );
+
+
+  if (
+    modal
+  ) {
+
+    modal.classList
+      .remove(
+        "hidden"
+      );
+
+  }
+
+}
+
+
+function closeModal() {
+
+  const modal =
+    document.getElementById(
+      "modal"
+    );
+
+
+  if (
+    modal
+  ) {
+
+    modal.classList
+      .add(
+        "hidden"
+      );
+
+  }
+
+}
+
 
 // =====================================================
 // AGREGAR PEDIDO
@@ -1177,6 +1417,109 @@ async function addOrder() {
 
     alert(
       "No se pudo guardar el pedido.\n\n" +
+      error.message
+    );
+
+  }
+
+}
+
+
+// =====================================================
+// ACTUALIZAR PRODUCCIÓN
+// =====================================================
+
+async function setDone(
+  id,
+  amount
+) {
+
+  const order =
+    orders.find(
+      x =>
+        String(x.id) ===
+        String(id)
+    );
+
+
+  if (
+    !order
+  ) {
+
+    return;
+
+  }
+
+
+  let newDone;
+
+
+  if (
+    amount === "ALL"
+  ) {
+
+    newDone =
+      Number(
+        order.qty
+      );
+
+  } else {
+
+    newDone =
+      Number(
+        order.done || 0
+      ) +
+      Number(
+        amount
+      );
+
+  }
+
+
+  newDone =
+    Math.max(
+      0,
+
+      Math.min(
+        Number(order.qty),
+        newDone
+      )
+    );
+
+
+  try {
+
+    await postAPI(
+      "updateOrder",
+      {
+
+        id:
+          order.id,
+
+        done:
+          newDone
+
+      }
+    );
+
+
+    await wait(
+      500
+    );
+
+
+    await syncFromSheets();
+
+
+  } catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    alert(
+      "No se pudo actualizar el pedido.\n\n" +
       error.message
     );
 
@@ -2067,7 +2410,7 @@ let savingOrdersV2={};let updateQueuesV2={};let openColorMachineIdV2=null;
 function normalizeMachinesV2(){machines=machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:m.orderId||"",colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));saveMachines();}
 function saveDailyV2(d){try{localStorage.setItem(DAILY_KEY_V2,JSON.stringify(d))}catch(e){console.error(e)}}
 function loadDailyV2(){try{return JSON.parse(localStorage.getItem(DAILY_KEY_V2)||"{}")}catch{return {}}}
-function todayV2(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function todayV2(){return new Date().toISOString().slice(0,10)}
 function addDailyV2(units){if(units<=0)return;const d=loadDailyV2(),k=todayV2();if(!d[k])d[k]={units:0};d[k].units=(d[k].units||0)+Number(units);saveDailyV2(d)}
 function toggleTheme(){document.documentElement.classList.toggle("dark");localStorage.setItem("dunno_produccion_theme",document.documentElement.classList.contains("dark")?"dark":"light");updateThemeButtonV2()}
 function updateThemeButtonV2(){const b=document.getElementById("themeToggle");if(b)b.textContent=document.documentElement.classList.contains("dark")?"☀":"☾"}
@@ -2078,81 +2421,9 @@ function openColorPaletteV2(machineId){openColorMachineIdV2=Number(machineId);co
 function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
 
-function queueUpdateV2(order){
-  const id=String(order.id);
-  if(!updateQueuesV2[id]) updateQueuesV2[id]=[];
-  updateQueuesV2[id].push({id:order.id,done:Number(order.done||0)});
-  processQueueV2(id);
-}
-
-async function processQueueV2(id){
-  if(savingOrdersV2[id]||!updateQueuesV2[id]?.length)return;
-
-  savingOrdersV2[id]=true;
-  render();
-
-  try{
-    while(updateQueuesV2[id]?.length){
-      const data=updateQueuesV2[id][0];
-      await postAPI("updateOrder",data);
-
-      let confirmed=false;
-      for(let attempt=0;attempt<6;attempt++){
-        await wait(attempt===0?700:500);
-        const ok=await syncFromSheets(false);
-        if(ok){
-          const saved=orders.find(o=>String(o.id)===String(id));
-          if(saved&&Number(saved.done||0)===Number(data.done)){
-            confirmed=true;
-            break;
-          }
-        }
-      }
-
-      if(!confirmed){
-        throw new Error("Google Sheets no confirmó el nuevo producido del pedido #"+id);
-      }
-
-      // Eliminamos SOLO la acción que acabamos de confirmar.
-      updateQueuesV2[id].shift();
-    }
-  }catch(e){
-    console.error("Error guardando producción:",e);
-    alert("No se pudo confirmar el guardado en Google Sheets.\n\n"+e.message);
-    await syncFromSheets(false);
-    // Evitamos reintentar automáticamente una acción que no pudimos confirmar.
-    updateQueuesV2[id]=[];
-  }finally{
-    savingOrdersV2[id]=false;
-    if(updateQueuesV2[id]?.length) processQueueV2(id);
-    else {
-      delete updateQueuesV2[id];
-      render();
-    }
-  }
-}
-
-function setDone(id,amount){
-  const o=orders.find(x=>String(x.id)===String(id));
-  if(!o)return;
-
-  const old=Number(o.done||0);
-  let n=amount==="ALL"?Number(o.qty):old+Number(amount);
-  n=Math.max(0,Math.min(Number(o.qty),n));
-
-  // No hay cambio: no hacemos ningún POST ni generamos producción.
-  if(n===old)return;
-
-  o.done=n;
-  o.status=n>=Number(o.qty)?"done":n>0?"production":"pending";
-  saveCache();
-  render();
-
-  // Apps Script/Sheets es la fuente de verdad de PRODUCCION_DIARIA.
-  // Encolamos cada acción por separado para que +5 seguido de +5
-  // produzca dos eventos independientes (5 y 5), sin perder ninguno.
-  queueUpdateV2({id:o.id,done:n});
-}
+// La actualización de producción se realiza exclusivamente con el setDone()
+// anterior: envía el nuevo valor a Apps Script y luego vuelve a sincronizar
+// desde Sheets. No se mantiene una segunda cola local que pueda sobrescribirlo.
 
 function renderMachineCard(machine){
   const order=orders.find(o=>String(o.id)===String(machine.orderId));
@@ -2300,4 +2571,3 @@ setInterval(realtimeSyncV2, REALTIME_SYNC_INTERVAL_V2);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) realtimeSyncV2();
 });
-
