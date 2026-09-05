@@ -3,6 +3,7 @@ const CONFIG = {
   ORDERS_SHEET: 'PEDIDOS',
   PRODUCTION_SHEET: 'PRODUCCION_DIARIA',
   SUMMARY_SHEET: 'RESUMEN_PRODUCCION',
+  OPERATIONS_SHEET: 'OPERACIONES_PEDIDOS',
   MACHINES_SHEET: 'MAQUINAS',
   TOKEN: 'Dunno0109'
 };
@@ -13,6 +14,7 @@ const SUMMARY_HEADERS = ['Fecha','Total_produccion'];
 const MACHINE_HEADERS = ['ID','Maquina','Pedido','Colores','Actualizado'];
 const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
+const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
 
 function getSS_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
 function setup(){
@@ -20,6 +22,7 @@ function setup(){
   currentOrdersSheet_();
   ensureProductionSheet_(ss);
   ensureSheet_(ss,CONFIG.SUMMARY_SHEET,SUMMARY_HEADERS);
+  ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
   const sh=ensureSheet_(ss,CONFIG.MACHINES_SHEET,MACHINE_HEADERS);
   const rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,5).getValues():[],byId={};
   rows.forEach(r=>{if(r[0]!==''&&r[0]!=null)byId[String(r[0])]=r;});
@@ -79,6 +82,7 @@ function doGet(e){
       console.log('Prueba de conexión procesada');
       return respond_({ok:true,success:true,message:'Google Apps Script conectado',timestamp:new Date().toISOString()},p.callback);
     }
+    if(p.action==='operationStatus')return respond_(operationStatus_(p),p.callback);
     console.log('Procesando GET: '+String(p.action||'dashboard'));
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
     const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),machines:getMachines_()};
@@ -88,13 +92,15 @@ function doGet(e){
 }
 function doPost(e){
   const p=e&&e.parameter?e.parameter:{};
-  console.log('Petición POST recibida: '+String(p.action||''));
+  console.log('[POST] Petición recibida: '+String(p.action||''));
+  console.log('[POST] Payload recibido: '+JSON.stringify(p));
   try{
     if(p.token!==CONFIG.TOKEN)return respond_({ok:false,error:'Token inválido'},p.callback);
+    console.log('[POST] Datos interpretados');
     const result={ok:true,action:p.action,data:executeAction_(p)};
-    console.log('Operación POST terminada: '+String(p.action||''));
+    console.log('[POST] Respuesta enviada');
     return respond_(result,p.callback);
-  }catch(err){console.error('Error POST: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
+  }catch(err){console.error('[POST] ERROR: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
 }
 function executeAction_(p){
   const action=p.action||'';
@@ -104,6 +110,17 @@ function executeAction_(p){
   if(action==='deleteOrder')return deleteOrder_(p);
   if(action==='updateMachine')return updateMachine_(p);
   throw new Error('Acción no reconocida: '+action);
+}
+function operationStatus_(p){
+  const operationId=String(p.operationId||'').trim();
+  if(!operationId)return {ok:false,error:'Falta operationId'};
+  const sh=getSS_().getSheetByName(CONFIG.OPERATIONS_SHEET);
+  if(!sh||sh.getLastRow()<2)return {ok:true,pending:true};
+  const rows=readTable_(sh,OPERATION_HEADERS.length);
+  for(let i=0;i<rows.length;i++)if(String(rows[i][0])===operationId){
+    return {ok:String(rows[i][2])==='OK',pending:false,orderId:String(rows[i][1]||''),error:String(rows[i][2]||'')};
+  }
+  return {ok:true,pending:true};
 }
 function readTable_(sh,width){return sh.getLastRow()<2?[]:sh.getRange(2,1,sh.getLastRow()-1,width).getValues();}
 function getOrders_(){
@@ -139,16 +156,28 @@ function addOrder_(p){
   try{return addOrderUnlocked_(p);}finally{lock.releaseLock();}
 }
 function addOrderUnlocked_(p){
-  const id=String(p.id||'').trim(),design=String(p.design||'').trim(),qty=Number(p.qty||0);
-  if(!id||!design||qty<=0)throw new Error('Datos de pedido incompletos');
-  const sh=currentOrdersSheet_(),existing=findOrderLocation_(id);
-  if(existing)return {id:id,created:false,duplicate:true};
+  const operationId=String(p.operationId||'').trim(),design=String(p.design||'').trim(),qty=Number(p.qty||0);
+  if(!operationId||!design||qty<=0)throw new Error('Datos de pedido incompletos');
+  console.log('[POST] Pedido válido: '+operationId);
+  const ss=getSS_(),opSheet=ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
+  const opRows=readTable_(opSheet,OPERATION_HEADERS.length);
+  for(let i=0;i<opRows.length;i++)if(String(opRows[i][0])===operationId)return {success:true,orderId:String(opRows[i][1]||''),duplicate:true};
+  const sh=currentOrdersSheet_(),id=nextOrderId_(sh);
+  console.log('[POST] ID generado: '+id);
   const now=new Date(),date=p.date?String(p.date):Utilities.formatDate(now,PRODUCTION_TIMEZONE,'yyyy-MM-dd');
   sh.getRange(sh.getLastRow()+1,1,1,ORDER_HEADERS.length).setValues([[
     id,date,Utilities.formatDate(now,PRODUCTION_TIMEZONE,'HH:mm:ss'),String(p.client||''),String(p.contact||''),
     String(p.product||''),design,qty,0,'pending','', '', '',String(p.priority||'normal'),now
   ]]);
-  return {id:id,created:true,sheet:sh.getName()};
+  opSheet.getRange(opSheet.getLastRow()+1,1,1,OPERATION_HEADERS.length).setValues([[operationId,id,'OK',now]]);
+  console.log('[POST] guardado correctamente: '+id);
+  return {success:true,orderId:id,created:true,sheet:sh.getName()};
+}
+function nextOrderId_(sh){
+  const prefix=Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'MMM').toUpperCase().slice(0,3)+Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy');
+  const rows=readTable_(sh,1);let max=0;
+  rows.forEach(r=>{const match=String(r[0]||'').match(new RegExp('^'+prefix+'(\\d{4})$'));if(match)max=Math.max(max,Number(match[1]));});
+  return prefix+String(max+1).padStart(4,'0');
 }
 function updateBatch_(p){
   let changes=[],machines=[],newOrders=[];

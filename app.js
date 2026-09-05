@@ -1061,6 +1061,32 @@ function postAPI(
           console.info("[Sheets] Respuesta POST recibida", {action});
           resolve({ok:true, action});
         }
+
+        function getOperationStatusV2(operationId) {
+          return new Promise((resolve, reject) => {
+            const callback = "dunnoOperation_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+            const script = document.createElement("script");
+            let finished = false;
+            const cleanup = () => {
+              script.remove();
+              delete window[callback];
+            };
+            const finish = (error, data) => {
+              if (finished) return;
+              finished = true;
+              cleanup();
+              if (error) reject(error);
+              else resolve(data);
+            };
+            window[callback] = data => finish(null, data);
+            script.onerror = () => finish(new Error("No se pudo confirmar el pedido en Google Apps Script"));
+            script.src = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
+              "&action=operationStatus&operationId=" + encodeURIComponent(operationId) +
+              "&callback=" + callback + "&_=" + Date.now();
+            document.head.appendChild(script);
+            setTimeout(() => finish(new Error("Google Apps Script no confirmó el pedido a tiempo")), 15000);
+          });
+        }
       };
       iframe.onload = () => setTimeout(() => finish(), 500);
       iframe.onerror = () => finish(new Error("No se pudo conectar con Google Apps Script"));
@@ -1173,13 +1199,7 @@ function closeModal() {
 
 async function addOrder() {
 
-  const id =
-    document
-      .getElementById(
-        "fOrder"
-      )
-      .value
-      .trim();
+  const operationId = "op_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
 
   const client =
@@ -1226,11 +1246,7 @@ async function addOrder() {
       .value;
 
 
-  if (
-    !id ||
-    !design ||
-    !qty
-  ) {
+  if (!design || !qty) {
 
     alert(
       "Completá pedido, diseño y cantidad."
@@ -1241,21 +1257,24 @@ async function addOrder() {
   }
 
 
-  const newOrder={id,client,design,qty,done:0,date,priority,status:"pending"};
-  orders=[...orders,newOrder];
-  saveCache();
-  render();
-  closeModal();
-  queueNewOrderV2({
-    id,client,design,qty,done:0,date,priority,contact:"",product:""
-  });
-
   try {
+    console.info("[Sheets] POST iniciado", operationId);
+    await postAPI("addOrder", {
+      operationId, client, design, qty, date, priority, contact:"", product:""
+    });
+    let result = await getOperationStatusV2(operationId);
+    for (let attempt=0; result.pending && attempt<4; attempt++) {
+      await wait(1000);
+      result = await getOperationStatusV2(operationId);
+    }
+    if (!result.ok || !result.orderId) throw new Error(result.error || "Google Sheets no confirmó el pedido");
+    console.info("[Sheets] POST completado", result);
+    orders=[...orders,{id:result.orderId,client,design,qty,done:0,date,priority,status:"pending"}];
+    saveCache();
+    render();
+    closeModal();
     document
-      .getElementById(
-        "fOrder"
-      )
-      .value = "";
+      .getElementById("fOrder").value = "";
 
 
     document
@@ -1279,7 +1298,10 @@ async function addOrder() {
       .value = "";
 
 
-  } catch (error) { console.error("Limpieza del formulario:",error); }
+  } catch (error) {
+    console.error("[Sheets] POST ERROR", error);
+    alert("No se pudo guardar el pedido.\n\n"+syncErrorMessageV2(error));
+  }
 
 }
 

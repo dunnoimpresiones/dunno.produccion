@@ -39,7 +39,7 @@
   <footer class="app-footer">Dunno Producción v2.0 &nbsp;•&nbsp; Todos los cambios se sincronizan automáticamente &nbsp;☁</footer>
 
   <div id="modal" class="modal hidden"><div class="modal-card"><button class="close" onclick="closeModal()">×</button><h2>Nuevo pedido</h2><label>Pedido<input id="fOrder" placeholder="Ej. A12"></label><label>Cliente<input id="fClient" placeholder="Nombre del cliente"></label><label>Diseño<input id="fDesign" placeholder="Ej. Margaritas"></label><label>Cantidad<input id="fQty" type="number" min="1" value="25"></label><label>Fecha de entrega<input id="fDate" type="date"></label><label>Prioridad<select id="fPriority"><option value="normal">Normal</option><option value="high">Alta</option></select></label><button class="primary full" onclick="addOrder()">Guardar pedido</button></div></div>
-  <script src="app.js?v=20260905-connection-diagnostic"></script>
+  <script src="app.js?v=20260905-post-idempotent"></script>
   <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}</script>
 </body>
 </html>
