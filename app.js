@@ -819,6 +819,7 @@ function getOrdersFromAPI() {
 
       const callback = "dunnoData_" + Date.now();
       window[callback] = function(data) {
+        console.info("[Sheets] Respuesta recibida", data);
         window.dunnoData = data;
       };
       script.src =
@@ -882,6 +883,7 @@ function getOrdersFromAPI() {
 
           script.remove();
           delete window[callback];
+          console.error("[Sheets] Error de red al cargar datos", script.src);
 
 
           reject(
@@ -898,7 +900,9 @@ function getOrdersFromAPI() {
         .appendChild(
           script
         );
+      console.info("[Sheets] Enviando petición GET", script.src);
 
+      setTimeout(() => console.error("[Sheets] Timeout GET", script.src), 30000);
     }
   );
 
@@ -1072,45 +1076,90 @@ function postAPI(
   data = {}
 ) {
   return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-
-      const callback = "dunnoAction_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-      const params = new URLSearchParams({token: CONFIG.TOKEN, action, callback, _: String(Date.now())});
-      Object.keys(data).forEach(key => params.set(key, String(data[key] ?? "")));
-      const script = document.createElement("script");
+    (resolve, reject) => {
+      const iframe = document.createElement("iframe");
+      iframe.name = "dunno_post_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      iframe.style.display = "none";
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = CONFIG.API_URL;
+      form.target = iframe.name;
+      form.style.display = "none";
+      addFormField(form, "token", CONFIG.TOKEN);
+      addFormField(form, "action", action);
+      Object.keys(data).forEach(key => addFormField(form, key, data[key]));
       let finished = false;
       const cleanup = () => {
-        script.remove();
-        delete window[callback];
+        form.remove();
+        iframe.remove();
       };
-      const fail = message => {
+      const finish = (error) => {
         if (finished) return;
         finished = true;
         cleanup();
-        reject(new Error(message));
-      };
-      window[callback] = response => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        if (!response || !response.ok) {
-          reject(new Error(response?.error || "Google Apps Script rechazó la operación"));
-          return;
+        if (error) {
+          console.error("[Sheets] Error", {action, message:error.message});
+          reject(error);
+        } else {
+          console.info("[Sheets] Respuesta POST recibida", {action});
+          resolve({ok:true, action});
         }
-        resolve(response);
       };
-      script.onerror = () => fail("No se pudo conectar con Google Apps Script");
-      script.src = CONFIG.API_URL + "?" + params.toString();
-      document.head.appendChild(script);
-      setTimeout(() => fail("Google Apps Script no respondió a tiempo"), 30000);
-
+      iframe.onload = () => setTimeout(() => finish(), 500);
+      iframe.onerror = () => finish(new Error("No se pudo conectar con Google Apps Script"));
+      console.info("[Sheets] Enviando petición POST", {action, url:CONFIG.API_URL});
+      document.body.appendChild(iframe);
+      document.body.appendChild(form);
+      form.submit();
+      setTimeout(() => finish(new Error("Google Apps Script no respondió a tiempo")), 30000);
     }
   );
 
 }
+
+function testConnection() {
+  return new Promise((resolve, reject) => {
+    const callback = "dunnoHealth_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const script = document.createElement("script");
+    let finished = false;
+    window.dunnoData = null;
+    const url = CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
+      "&action=health&callback=" + callback + "&_=" + Date.now();
+    const cleanup = () => {
+      script.remove();
+      delete window[callback];
+    };
+    const fail = message => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      console.error("[Sheets] Prueba de conexión fallida", message);
+      showSyncStatusV2("🔴 Google Apps Script no disponible", true);
+      reject(new Error(message));
+    };
+    window[callback] = response => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      console.info("[Sheets] Prueba de conexión exitosa", response);
+      showSyncStatusV2("🟢 Google Apps Script conectado");
+      resolve(response);
+    };
+    script.onerror = () => fail("No se pudo conectar con Google Apps Script");
+    script.onload = () => {
+      if (finished || !window.dunnoData) return;
+      finished = true;
+      cleanup();
+      console.info("[Sheets] Prueba legacy exitosa", window.dunnoData);
+      showSyncStatusV2("🟢 Google Apps Script conectado");
+      resolve(window.dunnoData);
+    };
+    script.src = url;
+    document.head.appendChild(script);
+    setTimeout(() => fail("Google Apps Script no respondió a tiempo"), 15000);
+  });
+}
+window.testConnection = testConnection;
 
 
 // =====================================================
