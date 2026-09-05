@@ -87,7 +87,10 @@ function doGet(e){
     if(p.action==='operationStatus' || p.action==='getOperationStatusV2')return respond_(operationStatusCompat_(p),p.callback);
     console.log('Procesando GET: '+String(p.action||'dashboard'));
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
-    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),productionTotal:getProductionDailyTotal_(),machines:getMachines_()};
+    const productionToday=getProductionDailyTotal_();
+    console.log('[PRODUCCION] TOTAL encontrado: '+productionToday);
+    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),productionTotal:productionToday,productionToday:productionToday,machines:getMachines_()};
+    console.log('[PRODUCCION] Respuesta enviada: '+productionToday);
     console.log('Operación GET terminada');
     return respond_(result,p.callback);
   }catch(err){console.error('Error GET: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
