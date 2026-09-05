@@ -904,10 +904,10 @@ async function syncFromSheets(
     orders =
       Array.isArray(result) ? result : (result.orders || []);
 
-    if (!Array.isArray(result) && result.production) {
-      productionDailyV2 = result.production;
-      saveDailyV2(productionDailyV2);
-    }
+    productionDailyV2 =
+      (!Array.isArray(result) && result.production)
+        ? result.production
+        : productionDailyV2;
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
       machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
@@ -1005,110 +1005,24 @@ function cleanMachineOrders() {
 // =====================================================
 
 function postAPI(action, data = {}) {
-  return new Promise(async (resolve, reject) => {
-    const payload = new URLSearchParams();
-    payload.set("token", CONFIG.TOKEN);
-    payload.set("action", action);
-    Object.keys(data).forEach(key => payload.set(key, data[key] ?? ""));
-
-    try {
-      // Apps Script acepta este POST simple sin preflight CORS.
-      // No necesitamos leer la respuesta: el backend realiza el guardado.
-      await fetch(CONFIG.API_URL, {
-        method: "POST",
-        mode: "no-cors",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
-        },
-        body: payload.toString()
-      });
-      resolve({ ok: true });
-    } catch (error) {
-      console.error("POST Apps Script:", error);
-      reject(new Error("No se pudo enviar el pedido a Google Sheets"));
-    }
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement("iframe");
+    const form = document.createElement("form");
+    const name = "dunno_post_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    iframe.name = name; iframe.style.display = "none";
+    form.method = "POST"; form.action = CONFIG.API_URL; form.target = name; form.style.display = "none";
+    addFormField(form, "token", CONFIG.TOKEN); addFormField(form, "action", action);
+    Object.keys(data).forEach(key => addFormField(form, key, data[key]));
+    document.body.appendChild(iframe); document.body.appendChild(form);
+    let finished = false;
+    const cleanup = () => setTimeout(() => { form.remove(); iframe.remove(); }, 300);
+    const fail = message => { if(finished)return; finished=true; cleanup(); reject(new Error(message)); };
+    iframe.onload = () => { if(finished)return; finished=true; cleanup(); resolve({ok:true,submitted:true}); };
+    iframe.onerror = () => fail("No se pudo enviar la solicitud a Google Apps Script");
+    setTimeout(() => { if(!finished)fail("Tiempo de espera agotado al enviar la solicitud a Google Apps Script"); },10000);
+    form.submit();
   });
 }
-
-
-function addFormField(
-  form,
-  name,
-  value
-) {
-
-  const input =
-    document.createElement(
-      "input"
-    );
-
-
-  input.type =
-    "hidden";
-
-
-  input.name =
-    name;
-
-
-  input.value =
-    value ?? "";
-
-
-  form.appendChild(
-    input
-  );
-
-}
-
-
-// =====================================================
-// MODAL
-// =====================================================
-
-function openOrderModal() {
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-
-  if (
-    modal
-  ) {
-
-    modal.classList
-      .remove(
-        "hidden"
-      );
-
-  }
-
-}
-
-
-function closeModal() {
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-
-  if (
-    modal
-  ) {
-
-    modal.classList
-      .add(
-        "hidden"
-      );
-
-  }
-
-}
-
 
 // =====================================================
 // AGREGAR PEDIDO
@@ -1263,109 +1177,6 @@ async function addOrder() {
 
     alert(
       "No se pudo guardar el pedido.\n\n" +
-      error.message
-    );
-
-  }
-
-}
-
-
-// =====================================================
-// ACTUALIZAR PRODUCCIÓN
-// =====================================================
-
-async function setDone(
-  id,
-  amount
-) {
-
-  const order =
-    orders.find(
-      x =>
-        String(x.id) ===
-        String(id)
-    );
-
-
-  if (
-    !order
-  ) {
-
-    return;
-
-  }
-
-
-  let newDone;
-
-
-  if (
-    amount === "ALL"
-  ) {
-
-    newDone =
-      Number(
-        order.qty
-      );
-
-  } else {
-
-    newDone =
-      Number(
-        order.done || 0
-      ) +
-      Number(
-        amount
-      );
-
-  }
-
-
-  newDone =
-    Math.max(
-      0,
-
-      Math.min(
-        Number(order.qty),
-        newDone
-      )
-    );
-
-
-  try {
-
-    await postAPI(
-      "updateOrder",
-      {
-
-        id:
-          order.id,
-
-        done:
-          newDone
-
-      }
-    );
-
-
-    await wait(
-      500
-    );
-
-
-    await syncFromSheets();
-
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    alert(
-      "No se pudo actualizar el pedido.\n\n" +
       error.message
     );
 
@@ -2267,9 +2078,81 @@ function openColorPaletteV2(machineId){openColorMachineIdV2=Number(machineId);co
 function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
 
-function queueUpdateV2(order){const id=String(order.id);updateQueuesV2[id]={id:order.id,done:Number(order.done||0)};processQueueV2(id)}
-async function processQueueV2(id){if(savingOrdersV2[id]||!updateQueuesV2[id])return;const data=updateQueuesV2[id];delete updateQueuesV2[id];savingOrdersV2[id]=true;render();try{await postAPI("updateOrder",data);await syncFromSheets(false)}catch(e){console.error("Guardado en segundo plano:",e)}finally{savingOrdersV2[id]=false;if(updateQueuesV2[id])processQueueV2(id);else render()}}
-function setDone(id,amount){const o=orders.find(x=>String(x.id)===String(id));if(!o)return;const old=Number(o.done||0);let n=amount==="ALL"?Number(o.qty):old+Number(amount);n=Math.max(0,Math.min(Number(o.qty),n));const delta=n-old;if(!delta)return;o.done=n;o.status=n>=Number(o.qty)?"done":n>0?"production":"pending";saveCache();if(delta>0){const k=todayV2();productionDailyV2[k]=Number(productionDailyV2[k]||0)+delta}render();queueUpdateV2(o)}
+function queueUpdateV2(order){
+  const id=String(order.id);
+  if(!updateQueuesV2[id]) updateQueuesV2[id]=[];
+  updateQueuesV2[id].push({id:order.id,done:Number(order.done||0)});
+  processQueueV2(id);
+}
+
+async function processQueueV2(id){
+  if(savingOrdersV2[id]||!updateQueuesV2[id]?.length)return;
+
+  savingOrdersV2[id]=true;
+  render();
+
+  try{
+    while(updateQueuesV2[id]?.length){
+      const data=updateQueuesV2[id][0];
+      await postAPI("updateOrder",data);
+
+      let confirmed=false;
+      for(let attempt=0;attempt<6;attempt++){
+        await wait(attempt===0?700:500);
+        const ok=await syncFromSheets(false);
+        if(ok){
+          const saved=orders.find(o=>String(o.id)===String(id));
+          if(saved&&Number(saved.done||0)===Number(data.done)){
+            confirmed=true;
+            break;
+          }
+        }
+      }
+
+      if(!confirmed){
+        throw new Error("Google Sheets no confirmó el nuevo producido del pedido #"+id);
+      }
+
+      // Eliminamos SOLO la acción que acabamos de confirmar.
+      updateQueuesV2[id].shift();
+    }
+  }catch(e){
+    console.error("Error guardando producción:",e);
+    alert("No se pudo confirmar el guardado en Google Sheets.\n\n"+e.message);
+    await syncFromSheets(false);
+    // Evitamos reintentar automáticamente una acción que no pudimos confirmar.
+    updateQueuesV2[id]=[];
+  }finally{
+    savingOrdersV2[id]=false;
+    if(updateQueuesV2[id]?.length) processQueueV2(id);
+    else {
+      delete updateQueuesV2[id];
+      render();
+    }
+  }
+}
+
+function setDone(id,amount){
+  const o=orders.find(x=>String(x.id)===String(id));
+  if(!o)return;
+
+  const old=Number(o.done||0);
+  let n=amount==="ALL"?Number(o.qty):old+Number(amount);
+  n=Math.max(0,Math.min(Number(o.qty),n));
+
+  // No hay cambio: no hacemos ningún POST ni generamos producción.
+  if(n===old)return;
+
+  o.done=n;
+  o.status=n>=Number(o.qty)?"done":n>0?"production":"pending";
+  saveCache();
+  render();
+
+  // Apps Script/Sheets es la fuente de verdad de PRODUCCION_DIARIA.
+  // Encolamos cada acción por separado para que +5 seguido de +5
+  // produzca dos eventos independientes (5 y 5), sin perder ninguno.
+  queueUpdateV2({id:o.id,done:n});
+}
 
 function renderMachineCard(machine){
   const order=orders.find(o=>String(o.id)===String(machine.orderId));
@@ -2316,7 +2199,7 @@ function renderMachineCard(machine){
     <div class="machine-actions-block">${quick}</div>
   </div>`;
 }
-function renderDashboardV2(){const el=document.getElementById("workshopDashboard");if(!el)return;const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;const inactive=machines.length-active;const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);const d=productionDailyV2||{},today=Number(d[todayV2()]||d[todayV2()]?.units||0);const y=new Date();y.setDate(y.getDate()-1);const yk=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0"),yesterday=Number(d[yk]?.units||0);const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;const days=[];for(let i=6;i>=0;i--){const x=new Date();x.setDate(x.getDate()-i);const k=x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");days.push({k,u:Number(d[k]||d[k]?.units||0),label:i===0?"Hoy":k.slice(8,10)+"/"+k.slice(5,7)})}const max=Math.max(1,...days.map(x=>x.u));el.innerHTML=`<div class="dashboard-card alert-card ${inactive===0?"good":"warning"}"><div><div class="dashboard-title">Estado del taller</div><div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div><div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div></div><div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div></div><div class="dashboard-card"><div class="dashboard-title">Producción de hoy</div><div class="dashboard-big">${today} <small>unidades</small></div><div class="dashboard-meta"><span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span><span>Máquinas <strong>${active}</strong></span>${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}</div><div class="dashboard-message">${motivationV2(today)}</div><div class="dashboard-history">${days.map(x=>`<div class="history-bar" style="height:${Math.max(6,Math.round(x.u/max*40))}px" title="${x.u} unidades"><span class="history-label">${x.label}</span></div>`).join("")}</div></div>`}
+function renderDashboardV2(){const el=document.getElementById("workshopDashboard");if(!el)return;const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;const inactive=machines.length-active;const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);const d=productionDailyV2||{},today=Number(d[todayV2()]||d[todayV2()]?.units||0);const y=new Date();y.setDate(y.getDate()-1);const yk=y.toISOString().slice(0,10),yesterday=Number(d[yk]?.units||0);const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;const days=[];for(let i=6;i>=0;i--){const x=new Date();x.setDate(x.getDate()-i);const k=x.toISOString().slice(0,10);days.push({k,u:Number(d[k]||d[k]?.units||0),label:i===0?"Hoy":k.slice(8,10)+"/"+k.slice(5,7)})}const max=Math.max(1,...days.map(x=>x.u));el.innerHTML=`<div class="dashboard-card alert-card ${inactive===0?"good":"warning"}"><div><div class="dashboard-title">Estado del taller</div><div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div><div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div></div><div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div></div><div class="dashboard-card"><div class="dashboard-title">Producción de hoy</div><div class="dashboard-big">${today} <small>unidades</small></div><div class="dashboard-meta"><span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span><span>Máquinas <strong>${active}</strong></span>${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}</div><div class="dashboard-message">${motivationV2(today)}</div><div class="dashboard-history">${days.map(x=>`<div class="history-bar" style="height:${Math.max(6,Math.round(x.u/max*40))}px" title="${x.u} unidades"><span class="history-label">${x.label}</span></div>`).join("")}</div></div>`}
 const MOTIVATION_KEY_V2="dunno_motivacion_diaria_v2";
 const MOTIVATION_SETS_V2={
   "0":["Dale que arrancamos 🚀","Todo empieza con la primera impresión.","Vamos a poner esas máquinas a trabajar.","Arrancamos tranqui, pero arrancamos 🔥","Hoy se viene jornada de taller.","Primero una impresión, después vemos 😎","Que empiece el ruido de las máquinas.","Día nuevo, impresiones nuevas.","Vamos a llenar esas bobinas de trabajo.","El taller está listo. ¿Y nosotros? 😏","Hoy también se fabrica.","A darle vida a esas ideas.","Las máquinas están esperando 🔥","Ponemos primera y arrancamos.","Un buen día empieza con una impresión."],
