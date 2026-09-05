@@ -817,14 +817,20 @@ function getOrdersFromAPI() {
         );
 
 
+      const callback = "dunnoData_" + Date.now();
+      window[callback] = function(data) {
+        window.dunnoData = data;
+      };
       script.src =
-        CONFIG.API_URL;
+        CONFIG.API_URL + "?token=" + encodeURIComponent(CONFIG.TOKEN) +
+        "&callback=" + callback + "&_=" + Date.now();
 
 
       script.onload =
         function() {
 
           script.remove();
+          delete window[callback];
 
 
           const data =
@@ -874,6 +880,7 @@ function getOrdersFromAPI() {
         function() {
 
           script.remove();
+          delete window[callback];
 
 
           reject(
@@ -911,8 +918,12 @@ async function syncFromSheets(
       await getOrdersFromAPI();
 
 
-    orders =
-      Array.isArray(result) ? result : (result.orders || []);
+    const remoteOrders=Array.isArray(result) ? result : (result.orders || []);
+    orders=remoteOrders.map(remote=>{
+      const pending=pendingChangesV2[String(remote.id)];
+      const local=pending||optimisticOrdersV2[String(remote.id)];
+      return local ? {...remote,done:local.done,status:local.status|| (Number(local.done)>=Number(remote.qty)?"done":Number(local.done)>0?"production":"pending")} : remote;
+    });
 
     productionDailyV2 =
       (!Array.isArray(result) && result.production)
@@ -931,6 +942,12 @@ async function syncFromSheets(
 
 
     render();
+    if(!pendingListV2().length){
+      setLastSyncV2(Date.now());
+      if(showError)showSyncStatusV2("🟢 Sincronizado");
+    }else{
+      showSyncStatusV2("🟡 Guardando...");
+    }
 
 
     console.log(
@@ -979,7 +996,7 @@ async function syncFromSheets(
       );
 
     }
-
+    showSyncStatusV2("No se pudo sincronizar con Google Sheets: "+syncErrorMessageV2(error),true);
 
     return false;
 
@@ -1046,198 +1063,41 @@ function postAPI(
   action,
   data = {}
 ) {
-
-  // postAPI no depende del ámbito global: el helper vive junto al envío.
-  // Esto evita el ReferenceError aunque el archivo se sirva como módulo o
-  // una versión antigua haya alterado el ámbito global.
-  const appendField = (
-    form,
-    name,
-    value
-  ) => {
-
-    const input = document.createElement("input");
-
-    input.type = "hidden";
-    input.name = name;
-    input.value = value ?? "";
-
-    form.appendChild(input);
-
-  };
-
   return new Promise(
     (
       resolve,
       reject
     ) => {
 
-      const iframe =
-        document.createElement(
-          "iframe"
-        );
-
-
-      iframe.name =
-        "dunno_post_" +
-        Date.now();
-
-
-      iframe.style.display =
-        "none";
-
-
-      document
-        .body
-        .appendChild(
-          iframe
-        );
-
-
-      const form =
-        document.createElement(
-          "form"
-        );
-
-
-      form.method =
-        "POST";
-
-
-      form.action =
-        CONFIG.API_URL;
-
-
-      form.target =
-        iframe.name;
-
-
-      form.style.display =
-        "none";
-
-
-      appendField(
-        form,
-        "token",
-        CONFIG.TOKEN
-      );
-
-
-      appendField(
-        form,
-        "action",
-        action
-      );
-
-
-      Object.keys(data)
-        .forEach(
-          key => {
-
-            appendField(
-              form,
-              key,
-              data[key]
-            );
-
-          }
-        );
-
-
-      document
-        .body
-        .appendChild(
-          form
-        );
-
-
-      let finished =
-        false;
-
-
-      function finish() {
-
-        if (
-          finished
-        ) {
-
+      const callback = "dunnoAction_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      const params = new URLSearchParams({token: CONFIG.TOKEN, action, callback, _: String(Date.now())});
+      Object.keys(data).forEach(key => params.set(key, String(data[key] ?? "")));
+      const script = document.createElement("script");
+      let finished = false;
+      const cleanup = () => {
+        script.remove();
+        delete window[callback];
+      };
+      const fail = message => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        reject(new Error(message));
+      };
+      window[callback] = response => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        if (!response || !response.ok) {
+          reject(new Error(response?.error || "Google Apps Script rechazó la operación"));
           return;
-
         }
-
-
-        finished =
-          true;
-
-
-        setTimeout(
-          () => {
-
-            form.remove();
-
-            iframe.remove();
-
-          },
-          500
-        );
-
-
-        resolve({
-          ok: true
-        });
-
-      }
-
-
-      iframe.onload =
-        function() {
-
-          finish();
-
-        };
-
-
-      iframe.onerror =
-        function() {
-
-          if (
-            finished
-          ) {
-
-            return;
-
-          }
-
-
-          finished =
-            true;
-
-
-          form.remove();
-
-          iframe.remove();
-
-
-          reject(
-            new Error(
-              "No se pudo enviar el pedido"
-            )
-          );
-
-        };
-
-
-      form.submit();
-
-
-      setTimeout(
-        () => {
-
-          finish();
-
-        },
-        5000
-      );
+        resolve(response);
+      };
+      script.onerror = () => fail("No se pudo conectar con Google Apps Script");
+      script.src = CONFIG.API_URL + "?" + params.toString();
+      document.head.appendChild(script);
+      setTimeout(() => fail("Google Apps Script no respondió a tiempo"), 10000);
 
     }
   );
@@ -1367,38 +1227,20 @@ async function addOrder() {
   }
 
 
+  const newOrder={id,client,design,qty,done:0,date,priority,status:"pending"};
+  orders=[...orders,newOrder];
+  saveCache();
+  render();
+  closeModal();
   try {
-
-    await postAPI(
-      "addOrder",
-      {
-
-        id:
-          id,
-
-        client:
-          client,
-
-        design:
-          design,
-
-        qty:
-          qty,
-
-        done:
-          0,
-
-        date:
-          date,
-
-        priority:
-          priority
-
-      }
-    );
-
-
-    closeModal();
+    await retryPostV2("addOrder",{
+      id,client,design,qty,done:0,date,priority
+    },error=>{
+      orders=orders.filter(item=>String(item.id)!==String(id));
+      saveCache();
+      render();
+      alert("No se pudo guardar el pedido.\n\n"+syncErrorMessageV2(error));
+    });
 
 
     document
@@ -1429,26 +1271,8 @@ async function addOrder() {
       .value = "";
 
 
-    await wait(
-      700
-    );
-
-
-    await syncFromSheets();
-
-
   } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    alert(
-      "No se pudo guardar el pedido.\n\n" +
-      error.message
-    );
-
+    console.error("Sincronización del pedido:",error);
   }
 
 }
@@ -1516,43 +1340,12 @@ async function setDone(
     );
 
 
-  try {
-
-    await postAPI(
-      "updateOrder",
-      {
-
-        id:
-          order.id,
-
-        done:
-          newDone
-
-      }
-    );
-
-
-    await wait(
-      500
-    );
-
-
-    await syncFromSheets();
-
-
-  } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    alert(
-      "No se pudo actualizar el pedido.\n\n" +
-      error.message
-    );
-
-  }
+  order.done=newDone;
+  order.status=newDone>=Number(order.qty)?"done":newDone>0?"production":"pending";
+  optimisticOrdersV2[String(order.id)]={done:newDone,status:order.status};
+  saveCache();
+  render();
+  queueOrderChangeV2(order);
 
 }
 
@@ -1576,39 +1369,19 @@ async function removeOrder(
   }
 
 
+  const removed=orders.find(order=>String(order.id)===String(id));
+  orders=orders.filter(order=>String(order.id)!==String(id));
+  saveCache();
+  render();
   try {
-
-    await postAPI(
-      "deleteOrder",
-      {
-
-        id:
-          id
-
-      }
-    );
-
-
-    await wait(
-      700
-    );
-
-
-    await syncFromSheets();
-
-
+    await retryPostV2("deleteOrder",{id},error=>{
+      if(removed) orders=[...orders,removed];
+      saveCache();
+      render();
+      alert("No se pudo eliminar el pedido.\n\n"+syncErrorMessageV2(error));
+    });
   } catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    alert(
-      "No se pudo eliminar el pedido.\n\n" +
-      error.message
-    );
-
+    console.error("Sincronización de eliminación:",error);
   }
 
 }
@@ -2434,7 +2207,122 @@ const DUNNO_COLORS = [
   ["Dorado","#D4AF37"],["Plateado","#A8A8A8"],["Cobre","#B87333"]
 ];
 const DAILY_KEY_V2="dunno_produccion_diaria_v2";
-let savingOrdersV2={};let updateQueuesV2={};let openColorMachineIdV2=null;
+const PENDING_CHANGES_KEY_V2="dunno_produccion_pending_changes_v2";
+const LAST_SYNC_KEY_V2="dunno_produccion_last_sync_v2";
+const BATCH_DELAY_V2=2500;
+let savingOrdersV2={};let openColorMachineIdV2=null;
+let optimisticOrdersV2={};
+let pendingChangesV2=loadPendingChangesV2();
+let pendingFlushTimerV2=null;
+let flushingPendingV2=false;
+let pendingRetryTimerV2=null;
+
+function loadPendingChangesV2(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(PENDING_CHANGES_KEY_V2)||"{}");
+    return saved&&typeof saved==="object"?saved:{};
+  }catch(error){console.error("No se pudieron cargar cambios pendientes:",error);return {}}
+}
+function savePendingChangesV2(){
+  try{localStorage.setItem(PENDING_CHANGES_KEY_V2,JSON.stringify(pendingChangesV2))}
+  catch(error){console.error("No se pudieron guardar cambios pendientes:",error)}
+}
+function pendingListV2(){return Object.values(pendingChangesV2)}
+function setLastSyncV2(value){
+  try{localStorage.setItem(LAST_SYNC_KEY_V2,String(value))}catch(error){console.error("No se pudo guardar la última sincronización:",error)}
+  const el=document.getElementById("lastSyncTime");
+  if(el)el.textContent=new Date(value).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+function loadLastSyncV2(){
+  try{
+    const value=Number(localStorage.getItem(LAST_SYNC_KEY_V2)||0);
+    if(value)setLastSyncV2(value);
+  }catch(error){console.error("No se pudo cargar la última sincronización:",error)}
+}
+function syncErrorMessageV2(error){
+  const message=String(error?.message||error||"Error desconocido");
+  if(/permiso|autoriz|token/i.test(message))return "Error de permisos o autenticación: "+message;
+  if(/hoja/i.test(message))return "Error de hoja de cálculo: "+message;
+  if(/columna|datos|incomplet|inválid/i.test(message))return "Error de datos/formato: "+message;
+  if(/conectar|red|tiempo|respond/i.test(message))return "Error de conexión: "+message;
+  return "Google Apps Script rechazó la operación: "+message;
+}
+function showSyncStatusV2(message,isError=false){
+  const el=document.getElementById("syncStatusV2");
+  if(!el)return;
+  el.textContent=message;
+  el.className=isError?"sync-error":"sync-ok";
+}
+function schedulePendingFlushV2(delay=BATCH_DELAY_V2){
+  clearTimeout(pendingFlushTimerV2);
+  if(!pendingListV2().length)return;
+  pendingFlushTimerV2=setTimeout(flushPendingChangesV2,delay);
+}
+function queueOrderChangeV2(order){
+  const key=String(order.id);
+  const version=Date.now()+"-"+Math.random().toString(36).slice(2);
+  pendingChangesV2[key]={id:order.id,done:Number(order.done),status:order.status,version};
+  savingOrdersV2[key]=true;
+  savePendingChangesV2();
+  showSyncStatusV2("🟡 Guardando...");
+  schedulePendingFlushV2();
+}
+async function flushPendingChangesV2(){
+  clearTimeout(pendingFlushTimerV2);
+  pendingRetryTimerV2=null;
+  if(flushingPendingV2||!pendingListV2().length)return;
+  flushingPendingV2=true;
+  const batch=pendingListV2().map(change=>({...change}));
+  showSyncStatusV2("🟡 Guardando...");
+  try{
+    const delays=[0,2000,5000];
+    let response;
+    for(let attempt=0;attempt<delays.length;attempt++){
+      if(delays[attempt])await wait(delays[attempt]);
+      try{response=await postAPI("updateBatch",{changes:JSON.stringify(batch.map(change=>({id:change.id,done:change.done}))) });break}
+      catch(error){if(attempt===delays.length-1)throw error}
+    }
+    if(!response?.ok)throw new Error("Google Apps Script no confirmó el lote");
+    batch.forEach(change=>{
+      const current=pendingChangesV2[String(change.id)];
+      if(current?.version===change.version){
+        delete pendingChangesV2[String(change.id)];
+        delete savingOrdersV2[String(change.id)];
+      }
+    });
+    savePendingChangesV2();
+    if(!pendingListV2().length)setLastSyncV2(Date.now());
+    showSyncStatusV2(pendingListV2().length?"🟡 Guardando...":"🟢 Sincronizado");
+  }catch(error){
+    console.error("Error sincronizando lote:",error);
+    showSyncStatusV2("🔴 Error al sincronizar",true);
+    clearTimeout(pendingRetryTimerV2);
+    pendingRetryTimerV2=setTimeout(flushPendingChangesV2,10000);
+  }finally{
+    flushingPendingV2=false;
+    if(pendingListV2().length&&!pendingRetryTimerV2)schedulePendingFlushV2();
+  }
+}
+
+async function retryPostV2(action,data,onFailure){
+  let error;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      if(attempt)await wait(attempt*2000);
+      const response=await postAPI(action,data);
+      if(!pendingListV2().length){
+        setLastSyncV2(Date.now());
+        showSyncStatusV2("🟢 Sincronizado");
+      }else{
+        showSyncStatusV2("🟡 Guardando...");
+      }
+      return response;
+    }catch(currentError){error=currentError}
+  }
+  onFailure(error);
+  showSyncStatusV2("🔴 Error al sincronizar",true);
+  throw error;
+}
 
 function normalizeMachinesV2(){machines=machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:m.orderId||"",colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));saveMachines();}
 function saveDailyV2(d){try{localStorage.setItem(DAILY_KEY_V2,JSON.stringify(d))}catch(e){console.error(e)}}
@@ -2455,10 +2343,6 @@ async function toggleMachineColorV2(machineId,name){const m=machines.find(x=>Num
 function openColorPaletteV2(machineId){openColorMachineIdV2=Number(machineId);const m=machines.find(x=>Number(x.id)===openColorMachineIdV2),p=document.getElementById("colorPopover");if(!m||!p)return;p.innerHTML=`<div class="palette-head"><span>Colores — ${esc(m.name)}</span><span class="palette-count">${(m.colors||[]).length}/16</span></div><div class="palette-grid">${DUNNO_COLORS.map(c=>`<button class="palette-item ${(m.colors||[]).includes(c[0])?"selected":""}" style="background:${c[1]}" title="${escAttr(c[0])}" onclick="toggleMachineColorV2(${m.id},'${js(c[0])}')"></button>`).join("")}</div>`;p.classList.remove("hidden");const b=document.querySelector(`[data-color-btn="${m.id}"]`);if(b){const r=b.getBoundingClientRect();p.style.left=Math.min(window.innerWidth-300,Math.max(8,r.right-290))+"px";p.style.top=Math.min(window.innerHeight-300,r.bottom+7)+"px"}}
 function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
-
-// La actualización de producción se realiza exclusivamente con el setDone()
-// anterior: envía el nuevo valor a Apps Script y luego vuelve a sincronizar
-// desde Sheets. No se mantiene una segunda cola local que pueda sobrescribirlo.
 
 function renderMachineCard(machine){
   const order=orders.find(o=>String(o.id)===String(machine.orderId));
@@ -2670,7 +2554,13 @@ function renderWorkshopSidebarV3(){
   r.innerHTML=`<div class="summary-row"><span>Total pedidos</span><strong>${orders.length}</strong></div><div class="summary-row"><span>En producción</span><strong>${production}</strong></div><div class="summary-row"><span>Pendientes</span><strong>${pending}</strong></div><div class="summary-row"><span>Máquinas activas</span><strong>${active} / ${machines.length}</strong></div><div class="summary-row"><span>Producción total</span><strong>${totalDone} / ${totalQty}</strong></div><div class="summary-progress"><div style="width:${totalPct}%"></div></div><div class="summary-percent">${totalPct}%</div>`;
 }
 
-normalizeMachinesV2();initThemeV2();installMachineStyles();render();setupSearch();syncFromSheets(false);
+normalizeMachinesV2();initThemeV2();installMachineStyles();render();setupSearch();loadLastSyncV2();
+if(pendingListV2().length){
+  showSyncStatusV2("🟡 Guardando...");
+  schedulePendingFlushV2(500);
+}else{
+  syncFromSheets(false);
+}
 
 // =====================================================
 // SINCRONIZACIÓN AUTOMÁTICA

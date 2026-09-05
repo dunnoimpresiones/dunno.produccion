@@ -6,12 +6,18 @@ DUNNO PRODUCCION V3
 - Guardar.
 - Ejecutar setup() una vez y autorizar si lo pide.
 - Verificar que aparezca la hoja MAQUINAS.
+- Verificar que PRODUCCION_DIARIA tenga exactamente estos encabezados en la fila 1:
+  Fecha | Pedido | Diseño | Unidades
 - Volver a Implementar > Administrar implementaciones.
 - Editar la implementación del tipo Aplicación web.
 - Nueva versión.
 - Ejecutar como: Yo.
 - Quién tiene acceso: Cualquier usuario.
 - Implementar.
+- Después de reemplazar Code.gs, volver a publicar una nueva versión; la aplicación usa
+  respuestas JSONP para confirmar el resultado real de cada escritura.
+- La actualización de producción utiliza la acción `updateBatch`; es necesario publicar
+  esta versión de Code.gs para que los cambios agrupados se procesen correctamente.
 
 2) GITHUB PAGES
 Reemplazar en la raíz del repositorio:

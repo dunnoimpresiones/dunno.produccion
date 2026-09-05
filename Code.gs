@@ -47,6 +47,10 @@ function doGet(e){
   try{
     const p=e&&e.parameter?e.parameter:{};
     if(p.token!==CONFIG.TOKEN) return respond_({ok:false,error:'Token inválido'},p.callback);
+    if(p.action){
+      executeAction_(p);
+      return respond_({ok:true,action:p.action},p.callback);
+    }
     const data=getDashboardData_();
     return respond_(data,p.callback);
   }catch(err){
@@ -58,14 +62,19 @@ function doPost(e){
   try{
     const p=e&&e.parameter?e.parameter:{};
     if(p.token!==CONFIG.TOKEN) return html_('Token inválido');
-    const action=p.action||'';
-    if(action==='addOrder') addOrder_(p);
-    else if(action==='updateOrder') updateOrder_(p);
-    else if(action==='deleteOrder') deleteOrder_(p);
-    else if(action==='updateMachine') updateMachine_(p);
-    else throw new Error('Acción no reconocida: '+action);
+    executeAction_(p);
     return html_('OK');
   }catch(err){ return html_('ERROR: '+String(err)); }
+}
+
+function executeAction_(p){
+  const action=p.action||'';
+  if(action==='addOrder') addOrder_(p);
+  else if(action==='updateOrder') updateOrder_(p);
+  else if(action==='updateBatch') updateBatch_(p);
+  else if(action==='deleteOrder') deleteOrder_(p);
+  else if(action==='updateMachine') updateMachine_(p);
+  else throw new Error('Acción no reconocida: '+action);
 }
 
 function getDashboardData_(){
@@ -124,6 +133,23 @@ function updateOrder_(p){
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
   try{
+    return updateOrderUnlocked_(p);
+  }finally{ lock.releaseLock(); }
+}
+
+function updateBatch_(p){
+  let changes=[];
+  try{ changes=JSON.parse(String(p.changes||'[]')); }catch(_){ throw new Error('El lote de cambios no tiene formato JSON válido'); }
+  if(!Array.isArray(changes)||changes.length>50) throw new Error('El lote de cambios es inválido o demasiado grande');
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try{
+    changes.forEach(change=>updateOrderUnlocked_({id:change.id,done:change.done}));
+    return {count:changes.length};
+  }finally{ lock.releaseLock(); }
+}
+
+function updateOrderUnlocked_(p){
     const sh=getSS_().getSheetByName(CONFIG.ORDERS_SHEET);
     if(!sh) throw new Error('No existe PEDIDOS');
     const id=String(p.id||'');
@@ -143,12 +169,21 @@ function updateOrder_(p){
       }
     }
     throw new Error('Pedido no encontrado: '+id);
-  }finally{ lock.releaseLock(); }
 }
 
 function appendProduction_(id,design,units){
-  const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET)||ensureSheet_(getSS_(),CONFIG.PRODUCTION_SHEET,PRODUCTION_HEADERS);
+  const sh=getProductionSheet_();
   sh.appendRow([new Date(),id,design,units]);
+}
+
+function getProductionSheet_(){
+  const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET);
+  if(!sh) throw new Error('No existe la hoja "'+CONFIG.PRODUCTION_SHEET+'". Ejecutá setup() para crearla.');
+  if(sh.getLastColumn()<PRODUCTION_HEADERS.length) throw new Error('La hoja "'+CONFIG.PRODUCTION_SHEET+'" no tiene las 4 columnas esperadas: '+PRODUCTION_HEADERS.join(', '));
+  const headers=sh.getRange(1,1,1,PRODUCTION_HEADERS.length).getValues()[0].map(String);
+  const mismatch=PRODUCTION_HEADERS.some((header,i)=>headers[i].trim()!==header);
+  if(mismatch) throw new Error('Columnas incorrectas en "'+CONFIG.PRODUCTION_SHEET+'". Se esperaban: '+PRODUCTION_HEADERS.join(', ')+'; se encontraron: '+headers.join(', '));
+  return sh;
 }
 
 function deleteOrder_(p){
@@ -160,8 +195,8 @@ function deleteOrder_(p){
 }
 
 function getProductionSummary_(){
-  const sh=getSS_().getSheetByName(CONFIG.PRODUCTION_SHEET);
-  if(!sh||sh.getLastRow()<2) return {};
+  const sh=getProductionSheet_();
+  if(sh.getLastRow()<2) return {};
   const rows=sh.getRange(2,1,sh.getLastRow()-1,4).getValues();
   const out={};
   rows.forEach(r=>{const d=r[0];if(!d)return;const k=Utilities.formatDate(new Date(d),Session.getScriptTimeZone(),'yyyy-MM-dd');out[k]=(Number(out[k]||0)+Number(r[3]||0));});
