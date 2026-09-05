@@ -2751,14 +2751,14 @@ const WORKSHOP_MESSAGES_V2={
     "Dale pa, así no vas a pagar las deudas.",
     "Rey, si seguís así vas a vender medias.",
     "Hay más silencio que en una biblioteca. Prendé una máquina.",
-    "Las impresoras están mirando el techo, jefe.",
-    "Una máquina laburando no hace verano. Metamos ritmo."
+    "Las impresoras están mirando el techo, jefe."
+    
   ],
   middle:[
-    "Vamos tomando ritmo, pero todavía hay bobinas mirando de afuera.",
+    
     "Mitad taller, mitad siesta. Metele un poquito más.",
     "Bien ahí, pero todavía queda lugar para que arranquen más máquinas.",
-    "El motor ya calentó: ahora falta pisar el acelerador.",
+    
     "Vamos bien, pero esas máquinas libres no se van a prender solas."
   ],
   near:[
