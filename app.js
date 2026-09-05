@@ -2429,7 +2429,13 @@ let savingOrdersV2={};let updateQueuesV2={};let openColorMachineIdV2=null;
 function normalizeMachinesV2(){machines=machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:m.orderId||"",colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));saveMachines();}
 function saveDailyV2(d){try{localStorage.setItem(DAILY_KEY_V2,JSON.stringify(d))}catch(e){console.error(e)}}
 function loadDailyV2(){try{return JSON.parse(localStorage.getItem(DAILY_KEY_V2)||"{}")}catch{return {}}}
-function todayV2(){return new Date().toISOString().slice(0,10)}
+function dateKeyV2(date){
+  const y=date.getFullYear();
+  const m=String(date.getMonth()+1).padStart(2,"0");
+  const d=String(date.getDate()).padStart(2,"0");
+  return `${y}-${m}-${d}`;
+}
+function todayV2(){return dateKeyV2(new Date())}
 function addDailyV2(units){if(units<=0)return;const d=loadDailyV2(),k=todayV2();if(!d[k])d[k]={units:0};d[k].units=(d[k].units||0)+Number(units);saveDailyV2(d)}
 function toggleTheme(){document.documentElement.classList.toggle("dark");localStorage.setItem("dunno_produccion_theme",document.documentElement.classList.contains("dark")?"dark":"light");updateThemeButtonV2()}
 function updateThemeButtonV2(){const b=document.getElementById("themeToggle");if(b)b.textContent=document.documentElement.classList.contains("dark")?"☀":"☾"}
@@ -2489,7 +2495,57 @@ function renderMachineCard(machine){
     <div class="machine-actions-block">${quick}</div>
   </div>`;
 }
-function renderDashboardV2(){const el=document.getElementById("workshopDashboard");if(!el)return;const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;const inactive=machines.length-active;const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);const d=productionDailyV2||{},today=Number(d[todayV2()]||d[todayV2()]?.units||0);const y=new Date();y.setDate(y.getDate()-1);const yk=y.toISOString().slice(0,10),yesterday=Number(d[yk]?.units||0);const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;const days=[];for(let i=6;i>=0;i--){const x=new Date();x.setDate(x.getDate()-i);const k=x.toISOString().slice(0,10);days.push({k,u:Number(d[k]||d[k]?.units||0),label:i===0?"Hoy":k.slice(8,10)+"/"+k.slice(5,7)})}const max=Math.max(1,...days.map(x=>x.u));el.innerHTML=`<div class="dashboard-card alert-card ${inactive===0?"good":"warning"}"><div><div class="dashboard-title">Estado del taller</div><div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div><div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div></div><div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div></div><div class="dashboard-card"><div class="dashboard-title">Producción de hoy</div><div class="dashboard-big">${today} <small>unidades</small></div><div class="dashboard-meta"><span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span><span>Máquinas <strong>${active}</strong></span>${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}</div><div class="dashboard-message">${motivationV2(today)}</div><div class="dashboard-history">${days.map(x=>`<div class="history-bar" style="height:${Math.max(6,Math.round(x.u/max*40))}px" title="${x.u} unidades"><span class="history-label">${x.label}</span></div>`).join("")}</div></div>`}
+function renderDashboardV2(){
+  const el=document.getElementById("workshopDashboard");
+  if(!el)return;
+
+  const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;
+  const inactive=machines.length-active;
+  const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);
+  const production=productionDailyV2||{};
+  const days=[];
+
+  for(let i=6;i>=0;i--){
+    const date=new Date();
+    date.setDate(date.getDate()-i);
+    const key=dateKeyV2(date);
+    const value=production[key];
+    days.push({
+      key,
+      units:Number(value?.units??value??0),
+      label:i===0?"Hoy":key.slice(8,10)+"/"+key.slice(5,7)
+    });
+  }
+
+  const today=days[days.length-1].units;
+  const yesterday=days[days.length-2].units;
+  const weeklyTotal=days.reduce((sum,day)=>sum+day.units,0);
+  const weeklyAverage=Math.round(weeklyTotal/days.length);
+  const diff=yesterday?Math.round((today-yesterday)/yesterday*100):null;
+  const max=Math.max(1,...days.map(day=>day.units));
+
+  el.innerHTML=`
+    <div class="dashboard-card alert-card ${inactive===0?"good":"warning"}">
+      <div>
+        <div class="dashboard-title">Estado del taller</div>
+        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div>
+        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div>
+      </div>
+      <div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div>
+    </div>
+    <div class="dashboard-card">
+      <div class="dashboard-title">Producción de hoy</div>
+      <div class="dashboard-big">${today} <small>unidades</small></div>
+      <div class="dashboard-meta">
+        <span>Pedidos activos <strong>${orders.filter(o=>o.status==="production").length}</strong></span>
+        <span>Máquinas <strong>${active}</strong></span>
+        <span>Promedio 7 días <strong>${weeklyAverage}</strong></span>
+        ${diff!==null?`<span>${diff>=0?"↑":"↓"} ${Math.abs(diff)}% vs. ayer</span>`:""}
+      </div>
+      <div class="dashboard-message">${motivationV2(today)}</div>
+      <div class="dashboard-history">${days.map(day=>`<div class="history-bar" style="height:${Math.max(6,Math.round(day.units/max*40))}px" title="${day.label}: ${day.units} unidades"><span class="history-label">${day.label}</span></div>`).join("")}</div>
+    </div>`;
+}
 const MOTIVATION_KEY_V2="dunno_motivacion_diaria_v2";
 const MOTIVATION_SETS_V2={
   "0":["Dale que arrancamos 🚀","Todo empieza con la primera impresión.","Vamos a poner esas máquinas a trabajar.","Arrancamos tranqui, pero arrancamos 🔥","Hoy se viene jornada de taller.","Primero una impresión, después vemos 😎","Que empiece el ruido de las máquinas.","Día nuevo, impresiones nuevas.","Vamos a llenar esas bobinas de trabajo.","El taller está listo. ¿Y nosotros? 😏","Hoy también se fabrica.","A darle vida a esas ideas.","Las máquinas están esperando 🔥","Ponemos primera y arrancamos.","Un buen día empieza con una impresión."],
