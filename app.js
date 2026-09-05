@@ -1344,8 +1344,32 @@ async function setDone(
   order.status=newDone>=Number(order.qty)?"done":newDone>0?"production":"pending";
   optimisticOrdersV2[String(order.id)]={done:newDone,status:order.status};
   saveCache();
+  const completedMachines=machines.filter(machine=>String(machine.orderId)===String(order.id));
+  const productionMachine=completedMachines[0]||null;
+  const productionContext=productionMachine?{
+    machine:productionMachine.name,
+    colors:JSON.stringify(productionMachine.colors||[])
+  }:{};
+  if(order.status==="done"&&completedMachines.length){
+    completedMachines.forEach(machine=>{
+      machine.orderId="";
+      saveMachines();
+    });
+  }
   render();
-  queueOrderChangeV2(order);
+  queueOrderChangeV2(order,productionContext);
+  if(order.status==="done"){
+    completedMachines.forEach(machine=>{
+      retryPostV2("updateMachine",{
+        machineId:machine.id,
+        orderId:"",
+        colors:JSON.stringify(machine.colors||[])
+      },error=>{
+        console.error("No se pudo liberar la máquina:",error);
+        alert("El pedido quedó completado, pero no se pudo liberar la máquina "+machine.name+".\n\n"+syncErrorMessageV2(error));
+      }).catch(error=>console.error("Sincronización de máquina:",error));
+    });
+  }
 
 }
 
@@ -2211,6 +2235,7 @@ const PENDING_CHANGES_KEY_V2="dunno_produccion_pending_changes_v2";
 const LAST_SYNC_KEY_V2="dunno_produccion_last_sync_v2";
 const BATCH_DELAY_V2=2500;
 let savingOrdersV2={};let openColorMachineIdV2=null;
+let draftMachineColorsV2=null;
 let optimisticOrdersV2={};
 let pendingChangesV2=loadPendingChangesV2();
 let pendingFlushTimerV2=null;
@@ -2258,10 +2283,17 @@ function schedulePendingFlushV2(delay=BATCH_DELAY_V2){
   if(!pendingListV2().length)return;
   pendingFlushTimerV2=setTimeout(flushPendingChangesV2,delay);
 }
-function queueOrderChangeV2(order){
+function queueOrderChangeV2(order,productionContext={}){
   const key=String(order.id);
   const version=Date.now()+"-"+Math.random().toString(36).slice(2);
-  pendingChangesV2[key]={id:order.id,done:Number(order.done),status:order.status,version};
+  pendingChangesV2[key]={
+    id:order.id,
+    done:Number(order.done),
+    status:order.status,
+    machine:productionContext.machine||"",
+    colors:productionContext.colors||"",
+    version
+  };
   savingOrdersV2[key]=true;
   savePendingChangesV2();
   showSyncStatusV2("🟡 Guardando...");
@@ -2279,7 +2311,12 @@ async function flushPendingChangesV2(){
     let response;
     for(let attempt=0;attempt<delays.length;attempt++){
       if(delays[attempt])await wait(delays[attempt]);
-      try{response=await postAPI("updateBatch",{changes:JSON.stringify(batch.map(change=>({id:change.id,done:change.done}))) });break}
+      try{response=await postAPI("updateBatch",{changes:JSON.stringify(batch.map(change=>({
+        id:change.id,
+        done:change.done,
+        machine:change.machine||"",
+        colors:change.colors||""
+      }))) });break}
       catch(error){if(attempt===delays.length-1)throw error}
     }
     if(!response?.ok)throw new Error("Google Apps Script no confirmó el lote");
@@ -2339,9 +2376,46 @@ function toggleTheme(){document.documentElement.classList.toggle("dark");localSt
 function updateThemeButtonV2(){const b=document.getElementById("themeToggle");if(b)b.textContent=document.documentElement.classList.contains("dark")?"☀":"☾"}
 function initThemeV2(){if(localStorage.getItem("dunno_produccion_theme")==="dark")document.documentElement.classList.add("dark");updateThemeButtonV2()}
 
-async function toggleMachineColorV2(machineId,name){const m=machines.find(x=>Number(x.id)===Number(machineId));if(!m)return;m.colors=m.colors||[];const i=m.colors.indexOf(name);if(i>=0)m.colors.splice(i,1);else{if(m.colors.length>=16){alert("Esta impresora ya tiene 16 colores seleccionados.");return}m.colors.push(name)}saveMachines();render();openColorPaletteV2(machineId);try{await postAPI("updateMachine",{machineId:m.id,orderId:m.orderId||"",colors:JSON.stringify(m.colors)})}catch(e){console.error("No se pudieron guardar los colores:",e)}}
-function openColorPaletteV2(machineId){openColorMachineIdV2=Number(machineId);const m=machines.find(x=>Number(x.id)===openColorMachineIdV2),p=document.getElementById("colorPopover");if(!m||!p)return;p.innerHTML=`<div class="palette-head"><span>Colores — ${esc(m.name)}</span><span class="palette-count">${(m.colors||[]).length}/16</span></div><div class="palette-grid">${DUNNO_COLORS.map(c=>`<button class="palette-item ${(m.colors||[]).includes(c[0])?"selected":""}" style="background:${c[1]}" title="${escAttr(c[0])}" onclick="toggleMachineColorV2(${m.id},'${js(c[0])}')"></button>`).join("")}</div>`;p.classList.remove("hidden");const b=document.querySelector(`[data-color-btn="${m.id}"]`);if(b){const r=b.getBoundingClientRect();p.style.left=Math.min(window.innerWidth-300,Math.max(8,r.right-290))+"px";p.style.top=Math.min(window.innerHeight-300,r.bottom+7)+"px"}}
-function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null}
+function renderColorPaletteV2(){
+  const m=machines.find(x=>Number(x.id)===Number(openColorMachineIdV2));
+  const p=document.getElementById("colorPopover");
+  if(!m||!p)return;
+  const selected=draftMachineColorsV2||[];
+  p.innerHTML=`<div class="palette-head"><span>Colores — ${esc(m.name)}</span><span class="palette-count">${selected.length}/16</span></div><div class="palette-grid">${DUNNO_COLORS.map(c=>`<button type="button" class="palette-item ${selected.includes(c[0])?"selected":""}" style="background:${c[1]}" title="${escAttr(c[0])}" onclick="toggleMachineColorV2(${m.id},'${js(c[0])}');event.stopPropagation()"></button>`).join("")}</div><div class="palette-actions"><button type="button" class="palette-cancel" onclick="closeColorPaletteV2()">Cancelar</button><button type="button" class="palette-apply" onclick="applyMachineColorsV2()">Aplicar</button></div>`;
+}
+function toggleMachineColorV2(machineId,name){
+  if(Number(machineId)!==Number(openColorMachineIdV2))return;
+  const colors=draftMachineColorsV2||[];
+  const index=colors.indexOf(name);
+  if(index>=0)colors.splice(index,1);
+  else if(colors.length<16)colors.push(name);
+  else {alert("Esta impresora ya tiene 16 colores seleccionados.");return}
+  renderColorPaletteV2();
+}
+function openColorPaletteV2(machineId){
+  openColorMachineIdV2=Number(machineId);
+  const m=machines.find(x=>Number(x.id)===openColorMachineIdV2),p=document.getElementById("colorPopover");
+  if(!m||!p)return;
+  draftMachineColorsV2=Array.from(new Set((m.colors||[]).slice(0,16)));
+  renderColorPaletteV2();
+  p.classList.remove("hidden");
+  const b=document.querySelector(`[data-color-btn="${m.id}"]`);
+  if(b){const r=b.getBoundingClientRect();p.style.left=Math.min(window.innerWidth-300,Math.max(8,r.right-290))+"px";p.style.top=Math.min(window.innerHeight-360,r.bottom+7)+"px"}
+}
+function applyMachineColorsV2(){
+  const m=machines.find(x=>Number(x.id)===Number(openColorMachineIdV2));
+  if(!m)return;
+  m.colors=Array.from(new Set((draftMachineColorsV2||[]).slice(0,16)));
+  saveMachines();
+  render();
+  const payload={machineId:m.id,orderId:m.orderId||"",colors:JSON.stringify(m.colors)};
+  closeColorPaletteV2();
+  retryPostV2("updateMachine",payload,error=>{
+    showSyncStatusV2("🔴 Error al sincronizar",true);
+    console.error("No se pudieron guardar los colores:",error);
+  }).catch(error=>console.error("Sincronización de colores:",error));
+}
+function closeColorPaletteV2(){document.getElementById("colorPopover")?.classList.add("hidden");openColorMachineIdV2=null;draftMachineColorsV2=null}
 document.addEventListener("click",e=>{if(openColorMachineIdV2===null)return;const p=document.getElementById("colorPopover");if(p&&!p.contains(e.target)&&!e.target.closest("[data-color-btn]"))closeColorPaletteV2()});
 
 function renderMachineCard(machine){
