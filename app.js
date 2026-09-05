@@ -1037,6 +1037,25 @@ function postAPI(
   data = {}
 ) {
 
+  // postAPI no depende del ámbito global: el helper vive junto al envío.
+  // Esto evita el ReferenceError aunque el archivo se sirva como módulo o
+  // una versión antigua haya alterado el ámbito global.
+  const appendField = (
+    form,
+    name,
+    value
+  ) => {
+
+    const input = document.createElement("input");
+
+    input.type = "hidden";
+    input.name = name;
+    input.value = value ?? "";
+
+    form.appendChild(input);
+
+  };
+
   return new Promise(
     (
       resolve,
@@ -1087,14 +1106,14 @@ function postAPI(
         "none";
 
 
-      addFormField(
+      appendField(
         form,
         "token",
         CONFIG.TOKEN
       );
 
 
-      addFormField(
+      appendField(
         form,
         "action",
         action
@@ -1105,7 +1124,7 @@ function postAPI(
         .forEach(
           key => {
 
-            addFormField(
+            appendField(
               form,
               key,
               data[key]
