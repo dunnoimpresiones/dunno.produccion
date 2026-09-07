@@ -1,8 +1,8 @@
-const CACHE = 'dunno-produccion-v6';
+const CACHE = 'dunno-produccion-v7';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=20260907-3mf-analysis',
+  './app.js?v=20260907-printing-counts',
   './styles.css',
   './manifest.webmanifest',
   './icons/icon-192.png',
