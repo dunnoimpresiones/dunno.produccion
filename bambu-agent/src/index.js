@@ -6,19 +6,25 @@ import { WebSocketServer } from "ws";
 const config = {
   host: process.env.AGENT_HOST || "0.0.0.0",
   port: Number(process.env.AGENT_PORT || 8787),
-  printers: [{
-    id: "bambu-01",
-    name: process.env.BAMBU_01_NAME || "A1",
-    model: process.env.BAMBU_01_MODEL || "Bambu Lab A1",
-    serial: process.env.BAMBU_01_SERIAL,
-    ip: process.env.BAMBU_01_IP,
-    accessCode: process.env.BAMBU_01_ACCESS_CODE,
-    slotAssignments: Array.from({length: 16}, (_, index) => index + 1).map(slot => ({
-      slot,
-      color: process.env[`BAMBU_01_SLOT_${slot}_COLOR`] || "",
-      type: process.env[`BAMBU_01_SLOT_${slot}_TYPE`] || ""
-    }))
-  }]
+  printers: Array.from({length: Number(process.env.BAMBU_COUNT || 1)}, (_, index) => {
+    const key = `BAMBU_${String(index + 1).padStart(2, "0")}`;
+    return {
+      id: `bambu-${String(index + 1).padStart(2, "0")}`,
+      name: process.env[`${key}_NAME`] || `Bambu ${index + 1}`,
+      model: process.env[`${key}_MODEL`] || "Bambu Lab",
+      serial: process.env[`${key}_SERIAL`],
+      ip: process.env[`${key}_IP`],
+      accessCode: process.env[`${key}_ACCESS_CODE`],
+      slotAssignments: Array.from({length: 16}, (_, slotIndex) => {
+        const slot = slotIndex + 1;
+        return {
+          slot,
+          color: process.env[`${key}_SLOT_${slot}_COLOR`] || "",
+          type: process.env[`${key}_SLOT_${slot}_TYPE`] || ""
+        };
+      })
+    };
+  })
 };
 
 const states = new Map(config.printers.map(printer => [printer.id, {

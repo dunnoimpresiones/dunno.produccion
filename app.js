@@ -2675,10 +2675,18 @@ function renderDashboardV2(){
   const el=document.getElementById("workshopDashboard");
   if(!el)return;
 
-  const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;
-  const inactive=machines.length-active;
-  const names=machines.filter(m=>!orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).map(m=>m.name);
-  const workshopMessage=workshopMessageV2(inactive,machines.length);
+  const monitoredMachines=bambuPrintersV2.length?bambuPrintersV2.map(printer=>({
+    name:printer.name||printer.model||"Bambu",
+    online:printer.connection==="ONLINE"
+  })):[];
+  const workshopMachines=monitoredMachines.length?monitoredMachines:machines.map(machine=>({
+    name:machine.name,
+    online:orders.some(o=>String(o.id)===String(machine.orderId)&&o.status!=="done")
+  }));
+  const active=workshopMachines.filter(machine=>machine.online).length;
+  const inactive=workshopMachines.length-active;
+  const names=workshopMachines.filter(machine=>!machine.online).map(machine=>machine.name);
+  const workshopMessage=workshopMessageV2(inactive,workshopMachines.length);
   const production=productionDailyV2||{};
   const days=[];
 
@@ -2705,11 +2713,11 @@ function renderDashboardV2(){
     <div class="dashboard-card alert-card ${inactive===0?"good":"warning"}">
       <div>
         <div class="dashboard-title">Estado del taller</div>
-        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA INACTIVA":"MÁQUINAS INACTIVAS")}</div>
-        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están produciendo.":names.join(" · ")}</div>
+        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA OFFLINE":"MÁQUINAS OFFLINE")}</div>
+        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están online.":names.join(" · ")}</div>
         <div class="workshop-message">${workshopMessage}</div>
       </div>
-      <div class="dashboard-meta"><span><strong>${active}</strong> / ${machines.length} activas</span></div>
+      <div class="dashboard-meta"><span><strong>${active}</strong> / ${workshopMachines.length} ONLINE</span></div>
     </div>
     <div class="dashboard-card">
       <div class="dashboard-title">Producción de hoy</div>
@@ -2762,9 +2770,9 @@ function connectBambuAgentV2(){
     bambuSocketV2=new WebSocket(host);
     bambuSocketV2.onmessage=event=>{
       const message=JSON.parse(event.data);
-      if(message.type==="printers"&&Array.isArray(message.printers)){bambuPrintersV2=message.printers;renderBambuFarmV2();}
+      if(message.type==="printers"&&Array.isArray(message.printers)){bambuPrintersV2=message.printers;renderDashboardV2();}
     };
-    bambuSocketV2.onclose=()=>{bambuPrintersV2=bambuPrintersV2.map(printer=>({...printer,connection:"OFFLINE",state:"OFFLINE"}));renderBambuFarmV2();setTimeout(connectBambuAgentV2,5000)};
+    bambuSocketV2.onclose=()=>{bambuPrintersV2=bambuPrintersV2.map(printer=>({...printer,connection:"OFFLINE",state:"OFFLINE"}));renderDashboardV2();setTimeout(connectBambuAgentV2,5000)};
     bambuSocketV2.onerror=()=>bambuSocketV2?.close();
   }catch(error){console.warn("Agent Bambu:",error.message)}
 }

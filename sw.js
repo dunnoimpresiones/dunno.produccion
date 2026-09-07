@@ -1,8 +1,8 @@
-const CACHE = 'dunno-produccion-v4';
+const CACHE = 'dunno-produccion-v5';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=20260907-filament-columns',
+  './app.js?v=20260907-multi-printer',
   './styles.css',
   './manifest.webmanifest',
   './icons/icon-192.png',

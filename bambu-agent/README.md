@@ -19,6 +19,16 @@ Los colores asignados manualmente pueden fijarse para los slots 1 a 16 en
 tienen prioridad sobre los colores reportados por el AMS. Después de cambiar
 `.env`, reiniciá el Agent.
 
+### Varias impresoras
+
+Para vincular más impresoras, cambiá `BAMBU_COUNT` por la cantidad total y
+agregá un bloque con el mismo formato para cada una: `BAMBU_02_NAME`,
+`BAMBU_02_MODEL`, `BAMBU_02_SERIAL`, `BAMBU_02_IP` y
+`BAMBU_02_ACCESS_CODE`. Cada impresora también puede tener sus propios valores
+`BAMBU_02_SLOT_1_COLOR` a `BAMBU_02_SLOT_16_COLOR`. El Agent publicará todas
+las impresoras por el mismo WebSocket y la aplicación las mostrará en
+`GRANJA 3D`.
+
 Para probar desde GitHub Pages, abrir temporalmente la aplicación con
 `?bambuAgent=ws://IP_DEL_PC_DEL_AGENT:8787`. No usar la IP de la impresora en
 esa URL: el Agent corre en la PC del taller. En una publicación HTTPS, el
