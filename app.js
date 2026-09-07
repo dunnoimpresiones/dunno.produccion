@@ -165,7 +165,7 @@ async function analyze3MFFileV2(file){
     production3MFV2={fileName:file.name,error:error.message};
     console.error("Lector 3MF:",error);
   }
-  renderDashboardV2();
+  renderDashboardV2(true);
 }
 function bambuSlotColorsV2(){
   try{return JSON.parse(localStorage.getItem(BAMBU_SLOT_COLORS_KEY_V2)||"{}")}catch(_){return {}}
@@ -2777,9 +2777,11 @@ function renderMachineCard(machine){
     <div class="machine-actions-block">${quick}</div>
   </div>`;
 }
-function renderDashboardV2(){
+function renderDashboardV2(force=false){
   const el=document.getElementById("workshopDashboard");
   if(!el)return;
+  const activeElement=document.activeElement;
+  if(!force&&activeElement&&activeElement.classList.contains("bambu-order-select"))return;
 
   const monitoredMachines=bambuPrintersV2.length?bambuPrintersV2.map(printer=>({
     name:printer.name||printer.model||"Bambu",
@@ -2879,7 +2881,7 @@ function connectBambuAgentV2(){
     bambuSocketV2=new WebSocket(host);
     bambuSocketV2.onmessage=event=>{
       const message=JSON.parse(event.data);
-      if(message.type==="printers"&&Array.isArray(message.printers)){bambuPrintersV2=message.printers;renderDashboardV2();}
+      if(message.type==="printers"&&Array.isArray(message.printers)){bambuPrintersV2=message.printers;renderDashboardV2(false);}
     };
     bambuSocketV2.onclose=()=>{bambuPrintersV2=bambuPrintersV2.map(printer=>({...printer,connection:"OFFLINE",state:"OFFLINE"}));renderDashboardV2();setTimeout(connectBambuAgentV2,5000)};
     bambuSocketV2.onerror=()=>bambuSocketV2?.close();
@@ -2967,7 +2969,7 @@ function render(){
   document.getElementById("productionCount").textContent=orders.filter(o=>o.status==="production").length;
   document.getElementById("doneCount").textContent=orders.filter(o=>o.status==="done").length;
   document.getElementById("unitsCount").textContent=orders.reduce((s,o)=>s+Math.max(0,Number(o.qty)-Number(o.done)),0);
-  renderDashboardV2();
+  renderDashboardV2(true);
   renderGroupedProductionV2();
   renderMachines();
   renderWorkshopSidebarV3();
