@@ -2624,7 +2624,7 @@ function renderBambuFarmV2(){
       <div class="bambu-ams"><span>AMS / Lite</span><div class="bambu-slots">${ams.length?ams.map(tray=>{
         const color=String(tray.color||"").replace("#","");
         const active=String(printer.activeTray??"")===String(tray.slot-1)||String(printer.activeTray??"")===String(tray.slot);
-        return `<span class="bambu-slot ${active?"active":""}" title="${esc((tray.type||"Filamento")+" · Slot "+tray.slot)}"><i style="background:${color?`#${color}`:"#777"}"></i><b>${esc(tray.type||"PLA")}</b><small>${esc(String(tray.slot))}</small></span>`;
+        return `<span class="bambu-slot ${active?"active":""}" title="${esc((tray.type||"Sin configurar")+" · Slot "+tray.slot)}"><i style="background:${color?`#${color}`:"#777"}"></i><b>${esc(tray.type||"Sin configurar")}</b><small>Slot ${esc(String(tray.slot))}</small></span>`;
       }).join(""):"<small>Sin datos</small>"}</div></div>
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;

@@ -13,11 +13,11 @@ const config = {
     serial: process.env.BAMBU_01_SERIAL,
     ip: process.env.BAMBU_01_IP,
     accessCode: process.env.BAMBU_01_ACCESS_CODE,
-    slotAssignments: [1, 2, 3, 4].map(slot => ({
+    slotAssignments: Array.from({length: 16}, (_, index) => index + 1).map(slot => ({
       slot,
       color: process.env[`BAMBU_01_SLOT_${slot}_COLOR`] || "",
       type: process.env[`BAMBU_01_SLOT_${slot}_TYPE`] || ""
-    })).filter(assignment => assignment.color || assignment.type)
+    }))
   }]
 };
 
@@ -110,7 +110,7 @@ function normalizeState(printer, previous, report) {
     remain: number(tray.remain)
   }))) : previous.ams;
   const assignedFilaments = filamentAssignments(print);
-  const configuredFilaments = printer.slotAssignments.length
+  const configuredFilaments = printer.slotAssignments.some(assignment => assignment.color || assignment.type)
     ? printer.slotAssignments.map(assignment => ({
       ...assignment,
       color: color(assignment.color)
