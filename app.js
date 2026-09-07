@@ -2757,15 +2757,15 @@ function renderDashboardV2(){
 
   const monitoredMachines=bambuPrintersV2.length?bambuPrintersV2.map(printer=>({
     name:printer.name||printer.model||"Bambu",
-    online:String(printer.state||"").toUpperCase()==="RUNNING"
+    running:String(printer.state||"").toUpperCase()==="RUNNING"
   })):[];
   const workshopMachines=monitoredMachines.length?monitoredMachines:machines.map(machine=>({
     name:machine.name,
-    online:orders.some(o=>String(o.id)===String(machine.orderId)&&o.status!=="done")
+    running:orders.some(o=>String(o.id)===String(machine.orderId)&&o.status!=="done")
   }));
-  const active=workshopMachines.filter(machine=>machine.online).length;
+  const active=workshopMachines.filter(machine=>machine.running).length;
   const inactive=workshopMachines.length-active;
-  const names=workshopMachines.filter(machine=>!machine.online).map(machine=>machine.name);
+  const names=workshopMachines.filter(machine=>!machine.running).map(machine=>machine.name);
   const workshopMessage=workshopMessageV2(inactive,workshopMachines.length);
   const production=productionDailyV2||{};
   const days=[];
@@ -2793,11 +2793,11 @@ function renderDashboardV2(){
     <div class="dashboard-card alert-card ${inactive===0?"good":"warning"}">
       <div>
         <div class="dashboard-title">Estado del taller</div>
-        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA NO RUNNING":"MÁQUINAS NO RUNNING")}</div>
-        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están RUNNING.":names.join(" · ")}</div>
+        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA SIN IMPRIMIR":"MÁQUINAS SIN IMPRIMIR")}</div>
+        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están imprimiendo.":names.join(" · ")}</div>
         <div class="workshop-message">${workshopMessage}</div>
       </div>
-      <div class="dashboard-meta"><span><strong>${active}</strong> / ${workshopMachines.length} RUNNING</span></div>
+      <div class="dashboard-meta"><span><strong>${active}</strong> / ${workshopMachines.length} imprimiendo</span></div>
     </div>
     <div class="dashboard-card">
       <div class="dashboard-title">Producción de hoy</div>
@@ -2811,7 +2811,7 @@ function renderDashboardV2(){
       <div class="dashboard-message">${motivationV2(today)}</div>
       <div class="dashboard-history">${days.map(day=>`<div class="history-bar" style="height:${Math.max(6,Math.round(day.units/max*40))}px" title="${day.label}: ${day.units} unidades"><span class="history-label">${day.label}</span></div>`).join("")}</div>
       <div class="production-3mf">
-        <div class="production-3mf-head"><strong>PRODUCTOS .3MF</strong><label class="small-btn">Analizar .3MF<input type="file" accept=".3mf,application/3mf" onchange="analyze3MFFileV2(this.files[0])" hidden></label></div>
+        <div class="production-3mf-head"><strong>PRODUCTOS .3MF</strong><label class="small-btn">Subir archivo .3MF<input type="file" accept=".3mf,application/3mf" onchange="analyze3MFFileV2(this.files[0])" hidden></label></div>
         ${production3MFV2?production3MFV2.error?`<p class="production-3mf-error">${esc(production3MFV2.error)}</p>`:`<div class="production-3mf-file">TRABAJO <strong>${esc(production3MFV2.fileName)}</strong></div><div class="production-3mf-summary"><span>🟢 Mini llaveritos <b>${production3MFV2.totals["mini llaverito"]}</b></span><span>🔵 Llaveros <b>${production3MFV2.totals.llavero}</b></span><span>🟣 Otros <b>${production3MFV2.totals.otros}</b></span><strong>TOTAL <b>${production3MFV2.total}</b></strong></div>`:"<span class=\"muted\">Todavía no se analizó un archivo .3MF.</span>"}
       </div>
     </div>
@@ -2821,7 +2821,7 @@ function renderDashboardV2(){
 function renderBambuFarmV2(){
   const el=document.getElementById("bambuFarmDashboard");
   if(!el)return;
-  const online=bambuPrintersV2.filter(printer=>printer.connection==="ONLINE").length;
+  const running=bambuPrintersV2.filter(printer=>String(printer.state||"").toUpperCase()==="RUNNING").length;
   const cards=bambuPrintersV2.length?bambuPrintersV2.map(printer=>{
     const state=String(printer.state||"OFFLINE");
     const progress=Number(printer.progress||0);
@@ -2840,7 +2840,7 @@ function renderBambuFarmV2(){
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
   }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
-  el.innerHTML=`<div class="bambu-farm-head"><div class="dashboard-title">Granja 3D</div><span>${online}/${bambuPrintersV2.length||1} ONLINE</span></div>${cards}`;
+  el.innerHTML=`<div class="bambu-farm-head"><div class="dashboard-title">Granja 3D</div><span>${running}/${bambuPrintersV2.length||1} IMPRIMIENDO</span></div>${cards}`;
 }
 function formatBambuMinutesV2(value){
   const total=Math.max(0,Math.round(Number(value)*60));
