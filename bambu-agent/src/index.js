@@ -76,6 +76,19 @@ function meaningfulText(...values) {
     .find(value => value && !["sin_guardar", "sin guardar", "none", "null"].includes(value.toLowerCase())) || "";
 }
 
+function filamentAssignments(print) {
+  const values = print.filament || print.filaments || print.filament_info || [];
+  if (!Array.isArray(values)) return [];
+  return values.map((filament, index) => {
+    const item = typeof filament === "string" ? {color: filament} : filament;
+    return {
+      slot: index + 1,
+      color: color(item.color || item.filament_color || item.tray_color),
+      type: item.type || item.filament_type || item.tray_type || ""
+    };
+  }).filter(item => item.color || item.type);
+}
+
 function normalizeState(printer, previous, report) {
   const print = report?.print || {};
   const ams = print.ams || report?.ams || {};
@@ -91,6 +104,8 @@ function normalizeState(printer, previous, report) {
     type: tray.tray_type || tray.tray_info_idx || tray.tray_type_name || "",
     remain: number(tray.remain)
   }))) : previous.ams;
+  const assignedFilaments = filamentAssignments(print);
+  const displayFilaments = assignedFilaments.length ? assignedFilaments : trays;
   const errors = Array.isArray(report.hms) ? report.hms : previous.errors;
   return {
     ...previous,
@@ -106,7 +121,7 @@ function normalizeState(printer, previous, report) {
     elapsedSeconds: number(pick(print, "mc_print_time", "print_time")) ?? previous.elapsedSeconds,
     nozzleTemperature: temperature(pick(print, "nozzle_temper", "nozzle_temp", "nozzle_temper_target"), previous.nozzleTemperature),
     bedTemperature: temperature(pick(print, "bed_temper", "bed_temp", "bed_temper_target"), previous.bedTemperature),
-    ams: trays,
+    ams: displayFilaments,
     activeTray: pick(ams, "tray_now", "active_tray", "tray_now_id") ?? previous.activeTray,
     errors,
     updatedAt: new Date().toISOString()
