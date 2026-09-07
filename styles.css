@@ -26,6 +26,29 @@ body{background:var(--bg);color:var(--text);transition:background .2s,color .2s}
 @media(max-width:650px){.machines-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.color-popover{width:280px}}
 @media(max-width:430px){.machines-grid{grid-template-columns:1fr!important}}
 
+.dashboard-card,
+.dashboard-card .dashboard-title,
+.dashboard-card .dashboard-meta,
+.dashboard-card .dashboard-meta strong,
+.dashboard-card .dashboard-message,
+.dashboard-card .machine-list-inline,
+.dashboard-card .production-3mf,
+.dashboard-card .production-3mf strong,
+.dashboard-card .production-3mf-file,
+.dashboard-card .production-3mf-summary,
+.dashboard-card .production-3mf-summary b{
+  color:#172024!important;
+}
+.production-3mf{margin-top:14px;border-top:1px solid #d5dce0;padding-top:12px}
+.production-3mf-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.production-3mf-head label{cursor:pointer}
+.production-3mf-file{margin-top:8px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap}
+.production-3mf-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px;font-size:12px}
+.production-3mf-summary span,.production-3mf-summary>strong{display:flex;justify-content:space-between;gap:6px}
+.production-3mf-summary>strong{border-left:1px solid #d5dce0;padding-left:8px}
+.production-3mf-error{color:#a11!important;font-size:12px}
+@media(max-width:650px){.production-3mf-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.production-3mf-summary>strong{border-left:0;padding-left:0}}
+
 /* Manual filament configuration must remain light and readable in either theme. */
 .bambu-filament-modal .bambu-filament-card,
 .bambu-filament-modal .bambu-filament-card .bambu-config-slot,

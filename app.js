@@ -64,6 +64,7 @@ let machines = [];
 // Producción diaria sincronizada con Google Sheets
 let productionDailyV2 = {};
 let productionTotalV2 = 0;
+let production3MFV2 = null;
 let bambuPrintersV2 = [];
 let bambuSocketV2 = null;
 const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
@@ -86,6 +87,85 @@ const BAMBU_FILAMENT_GROUPS_V2=[
   ["Marrones y pieles",["brown","beige","skin-162","skin-720"]],
   ["Metálicos",["rose-gold","gold","silver","copper"]]
 ];
+const MINI_KEYCHAIN_MAX_Z=2;
+const KEYCHAIN_MAX_Z=5;
+const TECHNICAL_3MF_NAME=/wipe|purge|tower|support|skirt|brim|raft|prime|auxiliary|technical|soporte|purga/i;
+function classify3MFObjectV2(height){
+  if(height<MINI_KEYCHAIN_MAX_Z)return "mini llaverito";
+  if(height<=KEYCHAIN_MAX_Z)return "llavero";
+  return "otros";
+}
+async function inflate3MFV2(bytes){
+  if(typeof DecompressionStream==="undefined")throw new Error("Este navegador no soporta descompresión ZIP");
+  const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function read3MFZipV2(file){
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  const view=new DataView(bytes.buffer);
+  const files={};
+  let offset=0;
+  while(offset+30<=bytes.length){
+    if(view.getUint32(offset,true)!==0x04034b50)break;
+    const method=view.getUint16(offset+8,true);
+    const compressedSize=view.getUint32(offset+18,true);
+    const nameLength=view.getUint16(offset+26,true);
+    const extraLength=view.getUint16(offset+28,true);
+    const name=new TextDecoder().decode(bytes.slice(offset+30,offset+30+nameLength));
+    const start=offset+30+nameLength+extraLength;
+    const compressed=bytes.slice(start,start+compressedSize);
+    files[name]=method===0?compressed:method===8?await inflate3MFV2(compressed):null;
+    if(!files[name])throw new Error(`Compresión ZIP no soportada en ${name}`);
+    offset=start+compressedSize;
+  }
+  return files;
+}
+function xmlNumber3MFV2(value){const number=Number(value);return Number.isFinite(number)?number:0}
+function parse3MFModelV2(xml){
+  const document=new DOMParser().parseFromString(new TextDecoder().decode(xml),"application/xml");
+  if(document.querySelector("parsererror"))throw new Error("El modelo 3MF no contiene XML válido");
+  const objects=new Map();
+  document.querySelectorAll("object").forEach(object=>{
+    const vertices=[...object.querySelectorAll("mesh > vertices > vertex")].map(vertex=>({
+      x:xmlNumber3MFV2(vertex.getAttribute("x")),
+      y:xmlNumber3MFV2(vertex.getAttribute("y")),
+      z:xmlNumber3MFV2(vertex.getAttribute("z"))
+    }));
+    if(!vertices.length)return;
+    const min={x:Math.min(...vertices.map(v=>v.x)),y:Math.min(...vertices.map(v=>v.y)),z:Math.min(...vertices.map(v=>v.z))};
+    const max={x:Math.max(...vertices.map(v=>v.x)),y:Math.max(...vertices.map(v=>v.y)),z:Math.max(...vertices.map(v=>v.z))};
+    const name=object.getAttribute("name")||`Objeto ${object.getAttribute("id")||""}`.trim();
+    objects.set(object.getAttribute("id"),{name,width:max.x-min.x,depth:max.y-min.y,height:max.z-min.z,technical:TECHNICAL_3MF_NAME.test(name)||object.getAttribute("type")==="support"});
+  });
+  const counted=new Map();
+  document.querySelectorAll("build > item").forEach(item=>{
+    const object=objects.get(item.getAttribute("objectid"));
+    if(!object||object.technical)return;
+    const key=item.getAttribute("objectid");
+    const current=counted.get(key)||{...object,instances:0};
+    current.instances++;
+    counted.set(key,current);
+  });
+  const items=[...counted.values()].map(item=>({...item,category:classify3MFObjectV2(item.height)}));
+  const totals=items.reduce((result,item)=>{
+    result[item.category]+=item.instances;
+    return result;
+  },{"mini llaverito":0,llavero:0,otros:0});
+  return {objects:items,total:totals["mini llaverito"]+totals.llavero+totals.otros,totals};
+}
+async function analyze3MFFileV2(file){
+  if(!file)return;
+  try{
+    const files=await read3MFZipV2(file);
+    const model=files["3D/3dmodel.model"]||files["3dmodel.model"];
+    if(!model)throw new Error("No se encontró 3D/3dmodel.model");
+    production3MFV2={fileName:file.name,...parse3MFModelV2(model)};
+  }catch(error){
+    production3MFV2={fileName:file.name,error:error.message};
+    console.error("Lector 3MF:",error);
+  }
+  renderDashboardV2();
+}
 function bambuSlotColorsV2(){
   try{return JSON.parse(localStorage.getItem(BAMBU_SLOT_COLORS_KEY_V2)||"{}")}catch(_){return {}}
 }
@@ -2677,7 +2757,7 @@ function renderDashboardV2(){
 
   const monitoredMachines=bambuPrintersV2.length?bambuPrintersV2.map(printer=>({
     name:printer.name||printer.model||"Bambu",
-    online:printer.connection==="ONLINE"
+    online:String(printer.state||"").toUpperCase()==="RUNNING"
   })):[];
   const workshopMachines=monitoredMachines.length?monitoredMachines:machines.map(machine=>({
     name:machine.name,
@@ -2702,7 +2782,7 @@ function renderDashboardV2(){
     });
   }
 
-  const today=productionTotalV2;
+  const today=production3MFV2&&!production3MFV2.error?production3MFV2.total:productionTotalV2;
   const yesterday=days[days.length-2].units;
   const weeklyTotal=days.reduce((sum,day)=>sum+day.units,0);
   const weeklyAverage=Math.round(weeklyTotal/days.length);
@@ -2713,11 +2793,11 @@ function renderDashboardV2(){
     <div class="dashboard-card alert-card ${inactive===0?"good":"warning"}">
       <div>
         <div class="dashboard-title">Estado del taller</div>
-        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA OFFLINE":"MÁQUINAS OFFLINE")}</div>
-        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están online.":names.join(" · ")}</div>
+        <div class="alert-count">${inactive===0?"🟢 TALLER A FULL":"⚠️ "+inactive+" "+(inactive===1?"MÁQUINA NO RUNNING":"MÁQUINAS NO RUNNING")}</div>
+        <div class="machine-list-inline">${inactive===0?"Todas las máquinas están RUNNING.":names.join(" · ")}</div>
         <div class="workshop-message">${workshopMessage}</div>
       </div>
-      <div class="dashboard-meta"><span><strong>${active}</strong> / ${workshopMachines.length} ONLINE</span></div>
+      <div class="dashboard-meta"><span><strong>${active}</strong> / ${workshopMachines.length} RUNNING</span></div>
     </div>
     <div class="dashboard-card">
       <div class="dashboard-title">Producción de hoy</div>
@@ -2730,6 +2810,10 @@ function renderDashboardV2(){
       </div>
       <div class="dashboard-message">${motivationV2(today)}</div>
       <div class="dashboard-history">${days.map(day=>`<div class="history-bar" style="height:${Math.max(6,Math.round(day.units/max*40))}px" title="${day.label}: ${day.units} unidades"><span class="history-label">${day.label}</span></div>`).join("")}</div>
+      <div class="production-3mf">
+        <div class="production-3mf-head"><strong>PRODUCTOS .3MF</strong><label class="small-btn">Analizar .3MF<input type="file" accept=".3mf,application/3mf" onchange="analyze3MFFileV2(this.files[0])" hidden></label></div>
+        ${production3MFV2?production3MFV2.error?`<p class="production-3mf-error">${esc(production3MFV2.error)}</p>`:`<div class="production-3mf-file">TRABAJO <strong>${esc(production3MFV2.fileName)}</strong></div><div class="production-3mf-summary"><span>🟢 Mini llaveritos <b>${production3MFV2.totals["mini llaverito"]}</b></span><span>🔵 Llaveros <b>${production3MFV2.totals.llavero}</b></span><span>🟣 Otros <b>${production3MFV2.totals.otros}</b></span><strong>TOTAL <b>${production3MFV2.total}</b></strong></div>`:"<span class=\"muted\">Todavía no se analizó un archivo .3MF.</span>"}
+      </div>
     </div>
     <div id="bambuFarmDashboard" class="dashboard-card bambu-farm-card"></div>`;
   renderBambuFarmV2();
