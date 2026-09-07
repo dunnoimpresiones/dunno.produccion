@@ -69,13 +69,23 @@ let bambuSocketV2 = null;
 const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
 const BAMBU_MAX_FILAMENT_SLOTS_V2=16;
 const BAMBU_FILAMENT_CATALOG_V2=[
-  ["white","Blanco","#FFFFFF"],["black","Negro","#111111"],["red","Rojo","#E53935"],["blue","Azul","#1976D2"],
-  ["dark-blue","Azul oscuro","#123B6D"],["sky","Celeste","#57B9E6"],["green","Verde","#2E9E5B"],["dark-green","Verde oscuro","#17633A"],
-  ["lime","Lima","#9ACD32"],["yellow","Amarillo","#F2C94C"],["orange","Naranja","#F2994A"],["pink","Rosa","#F48FB1"],
-  ["fuchsia","Fucsia","#D81B60"],["violet","Violeta","#7E57C2"],["purple","Púrpura","#542C85"],["brown","Marrón","#8B5E3C"],
-  ["beige","Beige","#D8C3A5"],["light-gray","Gris claro","#C7CDD1"],["gray","Gris","#7D858C"],["dark-gray","Gris oscuro","#42484D"],
-  ["silver","Plateado","#AEB7C0"],["gold","Dorado","#C99A2E"],["turquoise","Turquesa","#20B2AA"],["cyan","Cian","#00A9C7"],["magenta","Magenta","#C2185B"]
+  ["white","Blanco","#FFFFFF"],["black","Negro","#111111"],["dark-gray","Gris oscuro","#42484D"],["light-gray","Gris claro","#C7CDD1"],
+  ["violet","Violeta","#7E57C2"],["lavender","Lavanda","#B9A1D9"],["dark-blue","Azul prusia","#123B6D"],["blue","Azul","#1976D2"],["sky","Celeste","#57B9E6"],["baby-blue","Celeste bebe","#A9DDF2"],["purple","Uva","#643A86"],
+  ["apple-green","Verde manzana","#8BCB3D"],["dark-green","Verde oscuro","#17633A"],["military-green","Verde militar","#5D7A2A"],["krypton-green","Verde kriptonita","#43D43D"],["green-3n","Verde 3n","#24B51A"],["fluor-green","Verde fluor","#39FF14"],["baby-green","Verde bebe","#9AD9A0"],
+  ["fuchsia","Fucsia","#D81B60"],["strong-pink","Rosa fuerte","#F05A91"],["pink","Rosa","#F48FB1"],["baby-pink","Rosa bebe","#F7C7D9"],["red","Rojo","#E53935"],["bordo","Bordo","#8E1736"],
+  ["orange","Naranja","#F2994A"],["fluor-orange","Naranja fluor","#FF641F"],["yellow","Amarillo","#F2C94C"],["yellow-3n","Amarillo 3n","#F5E600"],["baby-yellow","Amarillo bebe","#FFF19A"],
+  ["brown","Marron","#8B5E3C"],["beige","Beige","#D8C3A5"],["skin-162","Piel 162","#D9A36C"],["skin-720","Piel 720","#E7B16E"],
+  ["rose-gold","Rose gold","#B98272"],["gold","Dorado","#C99A2E"],["silver","Plateado","#AEB7C0"],["copper","Cobre","#C66A35"]
 ].map(([id,name,hex])=>({id,name,hex}));
+const BAMBU_FILAMENT_GROUPS_V2=[
+  ["Blancos y grises",["white","black","dark-gray","light-gray"]],
+  ["Violetas y azules",["violet","lavender","purple","dark-blue","blue","sky","baby-blue"]],
+  ["Verdes",["apple-green","dark-green","military-green","krypton-green","green-3n","fluor-green","baby-green"]],
+  ["Rosas y rojos",["fuchsia","strong-pink","pink","baby-pink","red","bordo"]],
+  ["Naranjas y amarillos",["orange","fluor-orange","yellow","yellow-3n","baby-yellow"]],
+  ["Marrones y pieles",["brown","beige","skin-162","skin-720"]],
+  ["Metálicos",["rose-gold","gold","silver","copper"]]
+];
 function bambuSlotColorsV2(){
   try{return JSON.parse(localStorage.getItem(BAMBU_SLOT_COLORS_KEY_V2)||"{}")}catch(_){return {}}
 }
@@ -114,35 +124,50 @@ function openBambuFilamentModalV2(printerId){
   const modal=document.createElement("div");
   modal.className="modal bambu-filament-modal";
   modal.id="bambuFilamentModalV2";
+  modal.dataset.printerId=printerId;
+  window.bambuSelectedSlotV2=0;
   modal.innerHTML=`<div class="modal-card bambu-filament-card">
     <button class="close" type="button" onclick="closeBambuFilamentModalV2()">×</button>
-    <div class="dashboard-title">CONFIGURAR FILAMENTOS</div>
-    <h2>${esc(printer.name||"Bambu")} <small>${esc(printer.model||"")}</small></h2>
+    <div class="bambu-config-layout"><section class="bambu-config-main"><div class="dashboard-title">CONFIGURAR FILAMENTOS</div>
+    <h2>Configurar filamentos <small>${esc(printer.name||"Bambu")} ${esc(printer.model||"")}</small></h2>
+    <p class="bambu-config-help">Asigná un color a cada slot. Podés modificarlo cuando quieras.</p>
     <div class="bambu-config-grid">${values.map((value,index)=>{
       const color=bambuColorByIdV2(value);
-      return `<div class="bambu-config-slot"><strong>Slot ${String(index+1).padStart(2,"0")}</strong><span class="bambu-config-current">${color?`<i style="background:${color.hex}"></i>${esc(color.name)}`:"Vacío"}</span><button class="small-btn" type="button" onclick="openBambuColorPickerV2('${js(printerId)}',${index})">${color?"Cambiar":"Seleccionar"}</button></div>`;
-    }).join("")}</div>
-    <button class="primary full" type="button" onclick="saveBambuFilamentConfigV2('${js(printerId)}',window.bambuFilamentDraftV2)">Guardar configuración</button>
+      const visualSlot=(index%4)+1;
+      return `<button type="button" class="bambu-config-slot ${index===0?"selected":""}" onclick="selectBambuSlotV2(${index})"><strong>Slot ${visualSlot}</strong><i class="bambu-slot-preview ${color?"":"empty"}" style="${color?`background:${color.hex}`:""}"></i><span class="bambu-config-current">${color?esc(color.name):"Vacío"}</span><small>${color?"Cambiar":"Seleccionar"}</small></button>`;
+    }).join("")}</div><div class="bambu-config-actions"><button class="small-btn" type="button" onclick="closeBambuFilamentModalV2()">Cancelar</button><button class="primary" type="button" onclick="saveBambuFilamentConfigV2('${js(printerId)}',window.bambuFilamentDraftV2)">Guardar configuración</button></div></section><aside id="bambuColorPanelV2" class="bambu-color-panel"></aside></div>
   </div>`;
   window.bambuFilamentDraftV2=[...values];
   document.body.appendChild(modal);
+  renderBambuColorPanelV2(printerId);
 }
-function openBambuColorPickerV2(printerId,slotIndex){
+function selectBambuSlotV2(index){
+  window.bambuSelectedSlotV2=index;
+  document.querySelectorAll(".bambu-config-slot").forEach((element,slot)=>element.classList.toggle("selected",slot===index));
   const modal=document.getElementById("bambuFilamentModalV2");
-  const draft=window.bambuFilamentDraftV2||bambuFilamentConfigV2(printerId);
-  const picker=document.createElement("div");
-  picker.className="bambu-color-picker";
-  picker.innerHTML=`<div class="bambu-color-picker-card"><strong>Elegí un color para el slot ${String(slotIndex+1).padStart(2,"0")}</strong><div class="bambu-color-grid"><button type="button" class="bambu-color-option empty" onclick="chooseBambuColorV2('${js(printerId)}',${slotIndex},null)"><i></i>Vacío</button>${BAMBU_FILAMENT_CATALOG_V2.map(color=>`<button type="button" class="bambu-color-option" onclick="chooseBambuColorV2('${js(printerId)}',${slotIndex},'${color.id}')"><i style="background:${color.hex}"></i>${esc(color.name)}</button>`).join("")}</div></div>`;
-  modal.appendChild(picker);
+  const printerId=modal?.dataset.printerId;
+  if(printerId)renderBambuColorPanelV2(printerId);
+}
+function renderBambuColorPanelV2(printerId){
+  const panel=document.getElementById("bambuColorPanelV2");
+  if(!panel)return;
+  const slot=window.bambuSelectedSlotV2||0;
+  panel.innerHTML=`<h3>Elegí un color para el slot</h3><p>Seleccioná un color de la lista o dejalo vacío.</p><button type="button" class="bambu-color-option empty" onclick="chooseBambuColorV2('${js(printerId)}',${slot},null)"><i></i>Vacío</button>${BAMBU_FILAMENT_GROUPS_V2.map(([group,ids])=>`<section><h4>${group}</h4><div class="bambu-color-grid">${ids.map(id=>{const color=bambuColorByIdV2(id);return `<button type="button" class="bambu-color-option" onclick="chooseBambuColorV2('${js(printerId)}',${slot},'${id}')"><i style="background:${color.hex}"></i>${esc(color.name)}</button>`}).join("")}</div></section>`).join("")}`;
 }
 function chooseBambuColorV2(printerId,slotIndex,value){
   if(!window.bambuFilamentDraftV2)window.bambuFilamentDraftV2=bambuFilamentConfigV2(printerId);
   window.bambuFilamentDraftV2[slotIndex]=value;
-  closeBambuColorPickerV2();
   const modal=document.getElementById("bambuFilamentModalV2");
-  if(modal){modal.remove();openBambuFilamentModalV2(printerId);window.bambuFilamentDraftV2[slotIndex]=value}
+  if(modal){
+    const draft=[...window.bambuFilamentDraftV2];
+    modal.remove();
+    openBambuFilamentModalV2(printerId);
+    window.bambuFilamentDraftV2=draft;
+    window.bambuSelectedSlotV2=slotIndex;
+    renderBambuColorPanelV2(printerId);
+  }
 }
-function closeBambuColorPickerV2(){document.querySelector(".bambu-color-picker")?.remove()}
+function closeBambuColorPickerV2(){}
 function closeBambuFilamentModalV2(){document.getElementById("bambuFilamentModalV2")?.remove();window.bambuFilamentDraftV2=null}
 
 
