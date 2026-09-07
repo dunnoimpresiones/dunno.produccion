@@ -169,11 +169,17 @@ function chooseBambuColorV2(printerId,slotIndex,value){
   persistBambuFilamentConfigV2(printerId,window.bambuFilamentDraftV2);
   const modal=document.getElementById("bambuFilamentModalV2");
   if(modal){
-    const draft=[...window.bambuFilamentDraftV2];
-    modal.remove();
-    openBambuFilamentModalV2(printerId);
-    window.bambuFilamentDraftV2=draft;
-    window.bambuSelectedSlotV2=slotIndex;
+    const slot=modal.querySelectorAll(".bambu-config-slot")[slotIndex];
+    const color=bambuColorByIdV2(value);
+    if(slot){
+      const preview=slot.querySelector(".bambu-slot-preview");
+      const current=slot.querySelector(".bambu-config-current");
+      const hint=slot.querySelector("small");
+      preview.classList.toggle("empty",!color);
+      preview.style.background=color?color.hex:"";
+      current.textContent=color?color.name:"Vacío";
+      hint.textContent=color?"Cambiar":"Seleccionar";
+    }
     renderBambuColorPanelV2(printerId);
   }
 }
