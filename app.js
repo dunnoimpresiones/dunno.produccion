@@ -2853,7 +2853,7 @@ if(pendingListV2().length||pendingMachineListV2().length||pendingOrderListV2().l
 // SINCRONIZACIÓN AUTOMÁTICA
 // =====================================================
 // Mantiene todos los dispositivos actualizados con Google Sheets.
-// Se consulta cada 5 segundos cuando la pestaña está visible.
+// Se consulta cada 5 segundos cuando la pestaña está visible. 
 let realtimeSyncRunningV2 = false;
 const REALTIME_SYNC_INTERVAL_V2 = 5000;
 
