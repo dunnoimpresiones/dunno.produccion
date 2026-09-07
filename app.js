@@ -117,6 +117,15 @@ function saveBambuFilamentConfigV2(printerId,values){
   closeBambuFilamentModalV2();
   renderBambuFarmV2();
 }
+function persistBambuFilamentConfigV2(printerId,values){
+  const all=bambuSlotColorsV2();
+  all[printerId]=values.reduce((result,value,index)=>{
+    if(value)result[index+1]=value;
+    return result;
+  },{});
+  localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(all));
+  renderBambuFarmV2();
+}
 function openBambuFilamentModalV2(printerId){
   const printer=bambuPrintersV2.find(item=>item.id===printerId);
   if(!printer)return;
@@ -135,7 +144,7 @@ function openBambuFilamentModalV2(printerId){
       const color=bambuColorByIdV2(value);
       const visualSlot=(index%4)+1;
       return `<button type="button" class="bambu-config-slot ${index===0?"selected":""}" onclick="selectBambuSlotV2(${index})"><strong>Slot ${visualSlot}</strong><i class="bambu-slot-preview ${color?"":"empty"}" style="${color?`background:${color.hex}`:""}"></i><span class="bambu-config-current">${color?esc(color.name):"Vacío"}</span><small>${color?"Cambiar":"Seleccionar"}</small></button>`;
-    }).join("")}</div><div class="bambu-config-actions"><button class="small-btn" type="button" onclick="closeBambuFilamentModalV2()">Cancelar</button><button class="primary" type="button" onclick="saveBambuFilamentConfigV2('${js(printerId)}',window.bambuFilamentDraftV2)">Guardar configuración</button></div></section><aside id="bambuColorPanelV2" class="bambu-color-panel"></aside></div>
+    }).join("")}</div><div class="bambu-config-actions"><button class="small-btn" type="button" onclick="closeBambuFilamentModalV2()">Cerrar</button></div></section><aside id="bambuColorPanelV2" class="bambu-color-panel"></aside></div>
   </div>`;
   window.bambuFilamentDraftV2=[...values];
   document.body.appendChild(modal);
@@ -157,13 +166,20 @@ function renderBambuColorPanelV2(printerId){
 function chooseBambuColorV2(printerId,slotIndex,value){
   if(!window.bambuFilamentDraftV2)window.bambuFilamentDraftV2=bambuFilamentConfigV2(printerId);
   window.bambuFilamentDraftV2[slotIndex]=value;
+  persistBambuFilamentConfigV2(printerId,window.bambuFilamentDraftV2);
   const modal=document.getElementById("bambuFilamentModalV2");
   if(modal){
-    const draft=[...window.bambuFilamentDraftV2];
-    modal.remove();
-    openBambuFilamentModalV2(printerId);
-    window.bambuFilamentDraftV2=draft;
-    window.bambuSelectedSlotV2=slotIndex;
+    const slot=modal.querySelectorAll(".bambu-config-slot")[slotIndex];
+    const color=bambuColorByIdV2(value);
+    if(slot){
+      const preview=slot.querySelector(".bambu-slot-preview");
+      const current=slot.querySelector(".bambu-config-current");
+      const hint=slot.querySelector("small");
+      preview.classList.toggle("empty",!color);
+      preview.style.background=color?color.hex:"";
+      current.textContent=color?color.name:"Vacío";
+      hint.textContent=color?"Cambiar":"Seleccionar";
+    }
     renderBambuColorPanelV2(printerId);
   }
 }
