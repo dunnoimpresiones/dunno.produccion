@@ -1029,6 +1029,7 @@ function getOrdersFromAPI() {
     (resolve, reject) => {
       window.dunnoData = null;
       const script = document.createElement("script");
+      script.referrerPolicy = "no-referrer";
       const callback = "dunnoData_" + Date.now() + "_" + Math.random().toString(36).slice(2);
       let finished = false;
       let timeoutId = null;
@@ -1119,6 +1120,8 @@ async function syncFromSheets(
     productionTotalV2 = !Array.isArray(result)
       ? Number(result.productionToday || 0)
       : 0;
+    clearTimeout(sheetsRetryTimerV2);
+    sheetsRetryTimerV2=null;
 
     if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
       machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
@@ -1194,6 +1197,10 @@ async function syncFromSheets(
 
     }
     showSyncStatusV2("No se pudo sincronizar con Google Sheets: "+syncErrorMessageV2(error),true);
+    if(!showError){
+      clearTimeout(sheetsRetryTimerV2);
+      sheetsRetryTimerV2=setTimeout(()=>syncFromSheets(false),15000);
+    }
 
     return false;
 
@@ -3008,7 +3015,8 @@ if(pendingListV2().length||pendingMachineListV2().length||pendingOrderListV2().l
 // Mantiene todos los dispositivos actualizados con Google Sheets.
 // Se consulta cada 5 segundos cuando la pestaña está visible. 
 let realtimeSyncRunningV2 = false;
-const REALTIME_SYNC_INTERVAL_V2 = 5000;
+const REALTIME_SYNC_INTERVAL_V2 = 15000;
+let sheetsRetryTimerV2=null;
 
 async function realtimeSyncV2(){
   if (realtimeSyncRunningV2 || document.hidden) return;
