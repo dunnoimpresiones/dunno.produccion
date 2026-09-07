@@ -36,6 +36,7 @@ const states = new Map(config.printers.map(printer => [printer.id, {
 }]));
 const clients = new Set();
 const mqttClients = new Map();
+const reports = new Map();
 
 function number(value) {
   const parsed = Number(value);
@@ -47,6 +48,28 @@ function pick(object, ...keys) {
   return null;
 }
 
+function mergeReports(previous, next) {
+  if (!previous || typeof previous !== "object") return next;
+  if (!next || typeof next !== "object") return previous;
+  const merged = {...previous, ...next};
+  for (const key of Object.keys(next)) {
+    if (previous[key] && typeof previous[key] === "object" && next[key] && typeof next[key] === "object" && !Array.isArray(next[key])) {
+      merged[key] = mergeReports(previous[key], next[key]);
+    }
+  }
+  return merged;
+}
+
+function temperature(value, previous) {
+  const parsed = number(value);
+  return parsed !== null && (parsed > 0 || previous === null || previous === undefined) ? parsed : previous;
+}
+
+function color(value) {
+  const normalized = String(value || "").replace("#", "");
+  return normalized.length >= 6 ? normalized.slice(0, 6) : normalized;
+}
+
 function normalizeState(printer, previous, report) {
   const print = report?.print || {};
   const ams = report?.ams || {};
@@ -54,11 +77,12 @@ function normalizeState(printer, previous, report) {
   const state = ["IDLE", "RUNNING", "PAUSE", "PAUSED", "FINISH", "FAILED"].includes(rawState)
     ? rawState === "PAUSED" ? "PAUSE" : rawState
     : previous.state;
-  const trays = Array.isArray(ams.ams) ? ams.ams.flatMap(unit => (unit.tray || []).map((tray, index) => ({
+  const trayUnits = Array.isArray(ams.ams) ? ams.ams : Array.isArray(ams.ams_list) ? ams.ams_list : [];
+  const trays = trayUnits.length ? trayUnits.flatMap(unit => (unit.tray || unit.trays || []).map((tray, index) => ({
     id: `${unit.id ?? "ams"}-${index}`,
     slot: index + 1,
-    color: tray.tray_color || "",
-    type: tray.tray_type || tray.tray_info_idx || "",
+    color: color(tray.tray_color || tray.color),
+    type: tray.tray_type || tray.tray_info_idx || tray.tray_type_name || "",
     remain: number(tray.remain)
   }))) : previous.ams;
   const errors = Array.isArray(report.hms) ? report.hms : previous.errors;
@@ -66,14 +90,14 @@ function normalizeState(printer, previous, report) {
     ...previous,
     connection: "ONLINE",
     state,
-    progress: number(pick(print, "mc_percent", "percent")) ?? previous.progress,
-    job: String(pick(print, "subtask_name", "gcode_file", "file") || previous.job || ""),
+    progress: number(pick(print, "mc_percent", "percent", "print_percent")) ?? previous.progress,
+    job: String(pick(print, "subtask_name", "gcode_file", "file", "filename", "project_name", "task_name") || previous.job || ""),
     remainingMinutes: number(pick(print, "mc_remaining_time", "remaining_time")) ?? previous.remainingMinutes,
     elapsedSeconds: number(pick(print, "mc_print_time", "print_time")) ?? previous.elapsedSeconds,
-    nozzleTemperature: number(pick(print, "nozzle_temper", "nozzle_temp")) ?? previous.nozzleTemperature,
-    bedTemperature: number(pick(print, "bed_temper", "bed_temp")) ?? previous.bedTemperature,
+    nozzleTemperature: temperature(pick(print, "nozzle_temper", "nozzle_temp", "nozzle_temper_target"), previous.nozzleTemperature),
+    bedTemperature: temperature(pick(print, "bed_temper", "bed_temp", "bed_temper_target"), previous.bedTemperature),
     ams: trays,
-    activeTray: pick(ams, "tray_now", "active_tray") ?? previous.activeTray,
+    activeTray: pick(ams, "tray_now", "active_tray", "tray_now_id") ?? previous.activeTray,
     errors,
     updatedAt: new Date().toISOString()
   };
@@ -110,7 +134,9 @@ function connectPrinter(printer) {
   client.on("message", (_topic, payload) => {
     try {
       const report = JSON.parse(payload.toString());
-      states.set(printer.id, normalizeState(printer, states.get(printer.id), report));
+      const mergedReport = mergeReports(reports.get(printer.id), report);
+      reports.set(printer.id, mergedReport);
+      states.set(printer.id, normalizeState(printer, states.get(printer.id), mergedReport));
       broadcast();
     } catch (error) {
       console.error(`[Bambu] Reporte inválido ${printer.name}:`, error.message);
