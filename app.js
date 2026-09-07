@@ -187,7 +187,7 @@ function assignBambuOrderV2(printerId,orderId){
 function setBambuDoneV2(printerId,amount){
   const order=bambuAssignedOrderV2(printerId);
   if(!order)return;
-  setDone(order.id,amount);
+  setDone(order.id,amount,{bambu:true});
 }
 function setBambuSlotColorV2(printerId,slot,value){
   const colors=bambuSlotColorsV2();
@@ -1542,7 +1542,8 @@ async function addOrder() {
 
 async function setDone(
   id,
-  amount
+  amount,
+  options={}
 ) {
 
   const order =
@@ -1602,7 +1603,7 @@ async function setDone(
   order.status=newDone>=Number(order.qty)?"done":newDone>0?"production":"pending";
   optimisticOrdersV2[String(order.id)]={done:newDone,status:order.status};
   saveCache();
-  const completedMachines=machines.filter(machine=>String(machine.orderId)===String(order.id));
+  const completedMachines=options.bambu?[]:machines.filter(machine=>String(machine.orderId)===String(order.id));
   const productionMachine=completedMachines[0]||null;
   const productionContext=productionMachine?{
     machine:productionMachine.name,
@@ -2608,9 +2609,7 @@ async function flushPendingChangesV2(){
       if(delays[attempt])await wait(delays[attempt]);
       try{response=await postAPI("updateBatch",{changes:JSON.stringify(batch.map(change=>({
         id:change.id,
-        done:change.done,
-        machine:change.machine||"",
-        colors:change.colors||""
+        done:change.done
       }))),machines:JSON.stringify(machineBatch.map(machine=>({
         machineId:machine.machineId,
         orderId:machine.orderId,
