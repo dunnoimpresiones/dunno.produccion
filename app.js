@@ -2734,16 +2734,17 @@ function renderBambuFarmV2(){
     const state=String(printer.state||"OFFLINE");
     const progress=Number(printer.progress||0);
     const remaining=printer.remainingMinutes===null?"-":formatBambuMinutesV2(printer.remainingMinutes);
-    const configured=bambuFilamentConfigV2(printer.id).map(id=>bambuColorByIdV2(id)).filter(Boolean);
-    const visibleColors=configured.slice(0,4);
-    const extra=Math.max(0,configured.length-visibleColors.length);
+    const configured=bambuFilamentConfigV2(printer.id);
+    const filamentColumns=Array.from({length:4},(_,column)=>configured
+      .map((id,index)=>({id,color:bambuColorByIdV2(id),slot:index+1}))
+      .filter(item=>item.color&&((item.slot-1)%4===column)));
     return `<div class="bambu-card">
       <div class="bambu-card-head"><div><div class="dashboard-title">${esc(printer.name||"Bambu")}</div><strong>${esc(printer.model||"Bambu Lab")}</strong></div><span class="bambu-state ${state.toLowerCase()}">${state}</span></div>
       <div class="bambu-job">${esc(printer.job||"Sin trabajo activo")}</div>
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
-      <div class="bambu-filaments"><strong>FILAMENTOS</strong><div class="bambu-color-summary">${visibleColors.length?visibleColors.map(color=>`<span title="${esc(color.name)}"><i style="background:${color.hex}"></i>${esc(color.name)}</span>`).join(""):"<small>Sin filamentos configurados</small>"}${extra?`<b>+${extra}</b>`:""}</div><button type="button" class="small-btn bambu-config-button" onclick="openBambuFilamentModalV2('${js(printer.id)}')">⚙ Configurar filamentos</button></div>
+      <div class="bambu-filaments"><strong>FILAMENTOS</strong><div class="bambu-color-summary">${filamentColumns.map((items,column)=>`<div class="bambu-filament-column"><b>Slot ${column+1}:</b>${items.length?items.map(item=>`<span title="${esc(item.color.name)}"><i style="background:${item.color.hex}"></i>${esc(item.color.name)}</span>`).join(""):"<small>-</small>"}</div>`).join("")}</div><button type="button" class="small-btn bambu-config-button" onclick="openBambuFilamentModalV2('${js(printer.id)}')">⚙ Configurar filamentos</button></div>
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
   }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
