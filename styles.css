@@ -26,6 +26,53 @@ body{background:var(--bg);color:var(--text);transition:background .2s,color .2s}
 @media(max-width:650px){.machines-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.color-popover{width:280px}}
 @media(max-width:430px){.machines-grid{grid-template-columns:1fr!important}}
 
+/* Manual filament configuration must remain light and readable in either theme. */
+.bambu-filament-modal .bambu-filament-card,
+.bambu-filament-modal .bambu-filament-card .bambu-config-slot,
+.bambu-filament-modal .bambu-filament-card .bambu-color-option{
+  background:#fff!important;
+  color:#111!important;
+}
+.bambu-filament-modal .bambu-filament-card{
+  width:min(1450px,98vw)!important;
+  background:#fff!important;
+  color:#111!important;
+}
+.bambu-filament-modal .bambu-config-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.bambu-config-slot strong,
+.bambu-config-current,
+.bambu-color-panel h3,
+.bambu-color-panel h4{
+  color:#111!important;
+}
+.bambu-config-slot.selected{
+  border:2px solid #d6a900!important;
+  background:#fff8d6!important;
+  box-shadow:0 0 0 3px rgba(214,169,0,.22)!important;
+}
+.bambu-selected-slot-indicator{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  margin-bottom:10px;
+  padding:10px 12px;
+  border:2px solid #d6a900;
+  border-radius:10px;
+  background:#fff8d6;
+  color:#111;
+}
+.bambu-selected-slot-indicator strong{font-size:20px}
+.bambu-selected-slot-indicator span{font-size:12px;font-weight:800;text-transform:uppercase;color:#765d00}
+.bambu-color-panel .bambu-color-option.selected{
+  border:2px solid #16834b!important;
+  background:#e7f8ed!important;
+  box-shadow:0 0 0 2px rgba(22,131,75,.2)!important;
+  font-weight:900;
+}
+.bambu-color-panel .bambu-color-option.selected i{box-shadow:0 0 0 3px #fff,0 0 0 5px #16834b}
+
 .machine-title-wrap{display:flex;align-items:center;gap:8px;min-width:0}.machine-image{width:58px;height:50px;object-fit:contain;object-position:center;flex:0 0 auto;border-radius:6px}.machine-header .machine-name{white-space:nowrap}
 
 /* ===== DUNNO: máquinas en filas de ancho completo ===== */

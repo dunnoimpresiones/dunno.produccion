@@ -161,7 +161,8 @@ function renderBambuColorPanelV2(printerId){
   const panel=document.getElementById("bambuColorPanelV2");
   if(!panel)return;
   const slot=window.bambuSelectedSlotV2||0;
-  panel.innerHTML=`<h3>Elegí un color para el slot</h3><p>Seleccioná un color de la lista o dejalo vacío.</p><button type="button" class="bambu-color-option empty" onclick="chooseBambuColorV2('${js(printerId)}',${slot},null)"><i></i>Vacío</button>${BAMBU_FILAMENT_GROUPS_V2.map(([group,ids])=>`<section><h4>${group}</h4><div class="bambu-color-grid">${ids.map(id=>{const color=bambuColorByIdV2(id);return `<button type="button" class="bambu-color-option" onclick="chooseBambuColorV2('${js(printerId)}',${slot},'${id}')"><i style="background:${color.hex}"></i>${esc(color.name)}</button>`}).join("")}</div></section>`).join("")}`;
+  const selectedValue=window.bambuFilamentDraftV2?.[slot]||null;
+  panel.innerHTML=`<div class="bambu-selected-slot-indicator"><strong>Slot ${slot+1}</strong><span>seleccionado</span></div><h3>Elegí un color</h3><p>Seleccioná un color para este slot. Se guarda automáticamente.</p><button type="button" class="bambu-color-option empty ${selectedValue?"":"selected"}" onclick="chooseBambuColorV2('${js(printerId)}',${slot},null)"><i></i>Vacío</button>${BAMBU_FILAMENT_GROUPS_V2.map(([group,ids])=>`<section><h4>${group}</h4><div class="bambu-color-grid">${ids.map(id=>{const color=bambuColorByIdV2(id);return `<button type="button" class="bambu-color-option ${selectedValue===id?"selected":""}" aria-pressed="${selectedValue===id}" onclick="chooseBambuColorV2('${js(printerId)}',${slot},'${id}')"><i style="background:${color.hex}"></i>${esc(color.name)}</button>`}).join("")}</div></section>`).join("")}`;
 }
 function chooseBambuColorV2(printerId,slotIndex,value){
   if(!window.bambuFilamentDraftV2)window.bambuFilamentDraftV2=bambuFilamentConfigV2(printerId);
