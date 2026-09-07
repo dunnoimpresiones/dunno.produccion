@@ -70,9 +70,15 @@ function color(value) {
   return normalized.length >= 6 ? normalized.slice(0, 6) : normalized;
 }
 
+function meaningfulText(...values) {
+  return values
+    .map(value => String(value ?? "").trim())
+    .find(value => value && !["sin_guardar", "sin guardar", "none", "null"].includes(value.toLowerCase())) || "";
+}
+
 function normalizeState(printer, previous, report) {
   const print = report?.print || {};
-  const ams = report?.ams || {};
+  const ams = print.ams || report?.ams || {};
   const rawState = String(pick(print, "gcode_state", "state") || previous.state || "IDLE").toUpperCase();
   const state = ["IDLE", "RUNNING", "PAUSE", "PAUSED", "FINISH", "FAILED"].includes(rawState)
     ? rawState === "PAUSED" ? "PAUSE" : rawState
@@ -91,7 +97,11 @@ function normalizeState(printer, previous, report) {
     connection: "ONLINE",
     state,
     progress: number(pick(print, "mc_percent", "percent", "print_percent")) ?? previous.progress,
-    job: String(pick(print, "subtask_name", "gcode_file", "file", "filename", "project_name", "task_name") || previous.job || ""),
+    job: meaningfulText(
+      pick(print, "gcode_file", "file", "filename", "project_name", "task_name"),
+      pick(print, "subtask_name"),
+      previous.job
+    ),
     remainingMinutes: number(pick(print, "mc_remaining_time", "remaining_time")) ?? previous.remainingMinutes,
     elapsedSeconds: number(pick(print, "mc_print_time", "print_time")) ?? previous.elapsedSeconds,
     nozzleTemperature: temperature(pick(print, "nozzle_temper", "nozzle_temp", "nozzle_temper_target"), previous.nozzleTemperature),
