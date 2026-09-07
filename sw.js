@@ -1,8 +1,8 @@
-const CACHE = 'dunno-produccion-v9';
+const CACHE = 'dunno-produccion-v10';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=20260907-sheets-orders-only',
+  './app.js?v=20260907-sheets-retry',
   './styles.css',
   './manifest.webmanifest',
   './icons/icon-192.png',
