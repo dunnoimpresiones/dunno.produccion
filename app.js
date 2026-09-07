@@ -66,6 +66,84 @@ let productionDailyV2 = {};
 let productionTotalV2 = 0;
 let bambuPrintersV2 = [];
 let bambuSocketV2 = null;
+const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
+const BAMBU_MAX_FILAMENT_SLOTS_V2=16;
+const BAMBU_FILAMENT_CATALOG_V2=[
+  ["white","Blanco","#FFFFFF"],["black","Negro","#111111"],["red","Rojo","#E53935"],["blue","Azul","#1976D2"],
+  ["dark-blue","Azul oscuro","#123B6D"],["sky","Celeste","#57B9E6"],["green","Verde","#2E9E5B"],["dark-green","Verde oscuro","#17633A"],
+  ["lime","Lima","#9ACD32"],["yellow","Amarillo","#F2C94C"],["orange","Naranja","#F2994A"],["pink","Rosa","#F48FB1"],
+  ["fuchsia","Fucsia","#D81B60"],["violet","Violeta","#7E57C2"],["purple","Púrpura","#542C85"],["brown","Marrón","#8B5E3C"],
+  ["beige","Beige","#D8C3A5"],["light-gray","Gris claro","#C7CDD1"],["gray","Gris","#7D858C"],["dark-gray","Gris oscuro","#42484D"],
+  ["silver","Plateado","#AEB7C0"],["gold","Dorado","#C99A2E"],["turquoise","Turquesa","#20B2AA"],["cyan","Cian","#00A9C7"],["magenta","Magenta","#C2185B"]
+].map(([id,name,hex])=>({id,name,hex}));
+function bambuSlotColorsV2(){
+  try{return JSON.parse(localStorage.getItem(BAMBU_SLOT_COLORS_KEY_V2)||"{}")}catch(_){return {}}
+}
+function setBambuSlotColorV2(printerId,slot,value){
+  const colors=bambuSlotColorsV2();
+  if(!colors[printerId])colors[printerId]={};
+  colors[printerId][slot]=value;
+  localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(colors));
+  renderBambuFarmV2();
+}
+function bambuFilamentConfigV2(printerId){
+  const saved=bambuSlotColorsV2()[printerId]||{};
+  return Array.from({length:BAMBU_MAX_FILAMENT_SLOTS_V2},(_,index)=>{
+    const value=saved[index+1];
+    if(!value)return null;
+    if(bambuColorByIdV2(value))return value;
+    const legacy=String(value).toLowerCase();
+    return BAMBU_FILAMENT_CATALOG_V2.find(color=>color.hex.toLowerCase()===legacy)?.id||null;
+  });
+}
+function bambuColorByIdV2(id){return BAMBU_FILAMENT_CATALOG_V2.find(color=>color.id===id)||null}
+function saveBambuFilamentConfigV2(printerId,values){
+  const all=bambuSlotColorsV2();
+  all[printerId]=values.reduce((result,value,index)=>{
+    if(value)result[index+1]=value;
+    return result;
+  },{});
+  localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(all));
+  closeBambuFilamentModalV2();
+  renderBambuFarmV2();
+}
+function openBambuFilamentModalV2(printerId){
+  const printer=bambuPrintersV2.find(item=>item.id===printerId);
+  if(!printer)return;
+  const values=bambuFilamentConfigV2(printerId);
+  const modal=document.createElement("div");
+  modal.className="modal bambu-filament-modal";
+  modal.id="bambuFilamentModalV2";
+  modal.innerHTML=`<div class="modal-card bambu-filament-card">
+    <button class="close" type="button" onclick="closeBambuFilamentModalV2()">×</button>
+    <div class="dashboard-title">CONFIGURAR FILAMENTOS</div>
+    <h2>${esc(printer.name||"Bambu")} <small>${esc(printer.model||"")}</small></h2>
+    <div class="bambu-config-grid">${values.map((value,index)=>{
+      const color=bambuColorByIdV2(value);
+      return `<div class="bambu-config-slot"><strong>Slot ${String(index+1).padStart(2,"0")}</strong><span class="bambu-config-current">${color?`<i style="background:${color.hex}"></i>${esc(color.name)}`:"Vacío"}</span><button class="small-btn" type="button" onclick="openBambuColorPickerV2('${js(printerId)}',${index})">${color?"Cambiar":"Seleccionar"}</button></div>`;
+    }).join("")}</div>
+    <button class="primary full" type="button" onclick="saveBambuFilamentConfigV2('${js(printerId)}',window.bambuFilamentDraftV2)">Guardar configuración</button>
+  </div>`;
+  window.bambuFilamentDraftV2=[...values];
+  document.body.appendChild(modal);
+}
+function openBambuColorPickerV2(printerId,slotIndex){
+  const modal=document.getElementById("bambuFilamentModalV2");
+  const draft=window.bambuFilamentDraftV2||bambuFilamentConfigV2(printerId);
+  const picker=document.createElement("div");
+  picker.className="bambu-color-picker";
+  picker.innerHTML=`<div class="bambu-color-picker-card"><strong>Elegí un color para el slot ${String(slotIndex+1).padStart(2,"0")}</strong><div class="bambu-color-grid"><button type="button" class="bambu-color-option empty" onclick="chooseBambuColorV2('${js(printerId)}',${slotIndex},null)"><i></i>Vacío</button>${BAMBU_FILAMENT_CATALOG_V2.map(color=>`<button type="button" class="bambu-color-option" onclick="chooseBambuColorV2('${js(printerId)}',${slotIndex},'${color.id}')"><i style="background:${color.hex}"></i>${esc(color.name)}</button>`).join("")}</div></div>`;
+  modal.appendChild(picker);
+}
+function chooseBambuColorV2(printerId,slotIndex,value){
+  if(!window.bambuFilamentDraftV2)window.bambuFilamentDraftV2=bambuFilamentConfigV2(printerId);
+  window.bambuFilamentDraftV2[slotIndex]=value;
+  closeBambuColorPickerV2();
+  const modal=document.getElementById("bambuFilamentModalV2");
+  if(modal){modal.remove();openBambuFilamentModalV2(printerId);window.bambuFilamentDraftV2[slotIndex]=value}
+}
+function closeBambuColorPickerV2(){document.querySelector(".bambu-color-picker")?.remove()}
+function closeBambuFilamentModalV2(){document.getElementById("bambuFilamentModalV2")?.remove();window.bambuFilamentDraftV2=null}
 
 
 // =====================================================
@@ -2614,18 +2692,16 @@ function renderBambuFarmV2(){
     const state=String(printer.state||"OFFLINE");
     const progress=Number(printer.progress||0);
     const remaining=printer.remainingMinutes===null?"-":formatBambuMinutesV2(printer.remainingMinutes);
-    const ams=Array.isArray(printer.ams)?printer.ams:[];
+    const configured=bambuFilamentConfigV2(printer.id).map(id=>bambuColorByIdV2(id)).filter(Boolean);
+    const visibleColors=configured.slice(0,4);
+    const extra=Math.max(0,configured.length-visibleColors.length);
     return `<div class="bambu-card">
       <div class="bambu-card-head"><div><div class="dashboard-title">${esc(printer.name||"Bambu")}</div><strong>${esc(printer.model||"Bambu Lab")}</strong></div><span class="bambu-state ${state.toLowerCase()}">${state}</span></div>
       <div class="bambu-job">${esc(printer.job||"Sin trabajo activo")}</div>
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
-      <div class="bambu-ams"><span>AMS / Lite</span><div class="bambu-slots">${ams.length?ams.map(tray=>{
-        const color=String(tray.color||"").replace("#","");
-        const active=String(printer.activeTray??"")===String(tray.slot-1)||String(printer.activeTray??"")===String(tray.slot);
-        return `<span class="bambu-slot ${active?"active":""}" title="${esc((tray.type||"Filamento")+" · Slot "+tray.slot)}"><i style="background:${color?`#${color}`:"#777"}"></i><b>${esc(tray.type||"PLA")}</b><small>${esc(String(tray.slot))}</small></span>`;
-      }).join(""):"<small>Sin datos</small>"}</div></div>
+      <div class="bambu-filaments"><strong>FILAMENTOS</strong><div class="bambu-color-summary">${visibleColors.length?visibleColors.map(color=>`<span title="${esc(color.name)}"><i style="background:${color.hex}"></i>${esc(color.name)}</span>`).join(""):"<small>Sin filamentos configurados</small>"}${extra?`<b>+${extra}</b>`:""}</div><button type="button" class="small-btn bambu-config-button" onclick="openBambuFilamentModalV2('${js(printer.id)}')">⚙ Configurar filamentos</button></div>
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
   }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
@@ -2777,7 +2853,7 @@ if(pendingListV2().length||pendingMachineListV2().length||pendingOrderListV2().l
 // SINCRONIZACIÓN AUTOMÁTICA
 // =====================================================
 // Mantiene todos los dispositivos actualizados con Google Sheets.
-// Se consulta cada 5 segundos cuando la pestaña está visible.
+// Se consulta cada 5 segundos cuando la pestaña está visible. 
 let realtimeSyncRunningV2 = false;
 const REALTIME_SYNC_INTERVAL_V2 = 5000;
 
