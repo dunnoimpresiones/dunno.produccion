@@ -68,6 +68,7 @@ let production3MFV2 = null;
 let bambuPrintersV2 = [];
 let bambuSocketV2 = null;
 const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
+const BAMBU_ORDER_ASSIGNMENTS_KEY_V2="dunno_bambu_order_assignments_v2";
 const BAMBU_MAX_FILAMENT_SLOTS_V2=16;
 const BAMBU_FILAMENT_CATALOG_V2=[
   ["white","Blanco","#FFFFFF"],["black","Negro","#111111"],["dark-gray","Gris oscuro","#42484D"],["light-gray","Gris claro","#C7CDD1"],
@@ -168,6 +169,25 @@ async function analyze3MFFileV2(file){
 }
 function bambuSlotColorsV2(){
   try{return JSON.parse(localStorage.getItem(BAMBU_SLOT_COLORS_KEY_V2)||"{}")}catch(_){return {}}
+}
+function bambuOrderAssignmentsV2(){
+  try{return JSON.parse(localStorage.getItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2)||"{}")}catch(_){return {}}
+}
+function bambuAssignedOrderV2(printerId){
+  const id=bambuOrderAssignmentsV2()[printerId];
+  return orders.find(order=>String(order.id)===String(id)&&order.status!=="done")||null;
+}
+function assignBambuOrderV2(printerId,orderId){
+  const assignments=bambuOrderAssignmentsV2();
+  if(orderId)assignments[printerId]=String(orderId);
+  else delete assignments[printerId];
+  localStorage.setItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2,JSON.stringify(assignments));
+  render();
+}
+function setBambuDoneV2(printerId,amount){
+  const order=bambuAssignedOrderV2(printerId);
+  if(!order)return;
+  setDone(order.id,amount);
 }
 function setBambuSlotColorV2(printerId,slot,value){
   const colors=bambuSlotColorsV2();
@@ -2782,7 +2802,7 @@ function renderDashboardV2(){
     });
   }
 
-  const today=production3MFV2&&!production3MFV2.error?production3MFV2.total:productionTotalV2;
+  const today=productionTotalV2;
   const yesterday=days[days.length-2].units;
   const weeklyTotal=days.reduce((sum,day)=>sum+day.units,0);
   const weeklyAverage=Math.round(weeklyTotal/days.length);
@@ -2810,10 +2830,6 @@ function renderDashboardV2(){
       </div>
       <div class="dashboard-message">${motivationV2(today)}</div>
       <div class="dashboard-history">${days.map(day=>`<div class="history-bar" style="height:${Math.max(6,Math.round(day.units/max*40))}px" title="${day.label}: ${day.units} unidades"><span class="history-label">${day.label}</span></div>`).join("")}</div>
-      <div class="production-3mf">
-        <div class="production-3mf-head"><strong>PRODUCTOS .3MF</strong><label class="small-btn">Subir archivo .3MF<input type="file" accept=".3mf,application/3mf" onchange="analyze3MFFileV2(this.files[0])" hidden></label></div>
-        ${production3MFV2?production3MFV2.error?`<p class="production-3mf-error">${esc(production3MFV2.error)}</p>`:`<div class="production-3mf-file">TRABAJO <strong>${esc(production3MFV2.fileName)}</strong></div><div class="production-3mf-summary"><span>🟢 Mini llaveritos <b>${production3MFV2.totals["mini llaverito"]}</b></span><span>🔵 Llaveros <b>${production3MFV2.totals.llavero}</b></span><span>🟣 Otros <b>${production3MFV2.totals.otros}</b></span><strong>TOTAL <b>${production3MFV2.total}</b></strong></div>`:"<span class=\"muted\">Todavía no se analizó un archivo .3MF.</span>"}
-      </div>
     </div>
     <div id="bambuFarmDashboard" class="dashboard-card bambu-farm-card"></div>`;
   renderBambuFarmV2();
@@ -2827,6 +2843,8 @@ function renderBambuFarmV2(){
     const progress=Number(printer.progress||0);
     const remaining=printer.remainingMinutes===null?"-":formatBambuMinutesV2(printer.remainingMinutes);
     const configured=bambuFilamentConfigV2(printer.id);
+    const assignedOrder=bambuAssignedOrderV2(printer.id);
+    const orderOptions=orders.filter(order=>order.status!=="done").map(order=>`<option value="${escAttr(order.id)}" ${assignedOrder&&String(assignedOrder.id)===String(order.id)?"selected":""}>${esc(order.design||"Sin diseño")} (#${esc(order.id)})</option>`).join("");
     const filamentColumns=Array.from({length:4},(_,column)=>configured
       .map((id,index)=>({id,color:bambuColorByIdV2(id),slot:index+1}))
       .filter(item=>item.color&&((item.slot-1)%4===column)));
@@ -2836,7 +2854,8 @@ function renderBambuFarmV2(){
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
-      <div class="bambu-filaments"><strong>FILAMENTOS</strong><div class="bambu-color-summary">${filamentColumns.map((items,column)=>`<div class="bambu-filament-column"><b>Slot ${column+1}:</b>${items.length?items.map(item=>`<span title="${esc(item.color.name)}"><i style="background:${item.color.hex}"></i>${esc(item.color.name)}</span>`).join(""):"<small>-</small>"}</div>`).join("")}</div><button type="button" class="small-btn bambu-config-button" onclick="openBambuFilamentModalV2('${js(printer.id)}')">⚙ Configurar filamentos</button></div>
+      <div class="bambu-bottom-grid"><div class="bambu-production-controls"><label>Pedido<select class="bambu-order-select" onchange="assignBambuOrderV2('${js(printer.id)}',this.value)"><option value="">Seleccionar pedido</option>${orderOptions}</select></label>${assignedOrder?`<div class="bambu-quantity-controls"><span class="bambu-quantity-value">${Number(assignedOrder.done)||0}/${Number(assignedOrder.qty)||0}</span><button type="button" onclick="setBambuDoneV2('${js(printer.id)}',-1)">−</button><button type="button" onclick="setBambuDoneV2('${js(printer.id)}',1)">+</button><button type="button" onclick="setBambuDoneV2('${js(printer.id)}',10)">+10</button><button type="button" onclick="setBambuDoneV2('${js(printer.id)}',20)">+20</button><button type="button" onclick="setBambuDoneV2('${js(printer.id)}',25)">+25</button></div>`:""}</div>
+      <div class="bambu-filaments"><strong>FILAMENTOS</strong><div class="bambu-color-summary">${filamentColumns.map((items,column)=>`<div class="bambu-filament-column"><b>Slot ${column+1}:</b>${items.length?items.map(item=>`<span title="${esc(item.color.name)}"><i style="background:${item.color.hex}"></i>${esc(item.color.name)}</span>`).join(""):"<small>-</small>"}</div>`).join("")}</div><button type="button" class="small-btn bambu-config-button" onclick="openBambuFilamentModalV2('${js(printer.id)}')">⚙ Configurar filamentos</button></div></div>
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
   }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
