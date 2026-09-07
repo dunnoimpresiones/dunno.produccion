@@ -16,6 +16,7 @@ const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
 const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
 const PRODUCTION_TOTAL_LABEL = 'TOTAL GENERAL';
+const CUSTOM_ORDER_HEADERS = ['Fecha','Cliente','Red Social','Cantidad','Cantidad realizada','Que es ( llaverito, medalla iman)','Diseño','Estado'];
 
 function getSS_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
 function setup(){
@@ -142,13 +143,44 @@ function operationStatusCompat_(p){
 }
 function readTable_(sh,width){return sh.getLastRow()<2?[]:sh.getRange(2,1,sh.getLastRow()-1,width).getValues();}
 function getOrders_(){
-  const ss=getSS_(),sheets=ss.getSheets().filter(sh=>/^PEDIDOS_[A-ZÁÉÍÓÚ]+_\d{4}$/.test(sh.getName()));
-  if(!sheets.some(sh=>sh.getName()===monthlySheetName_(new Date())))sheets.push(currentOrdersSheet_());
-  return [].concat.apply([],sheets.map(sh=>readTable_(sh,ORDER_HEADERS.length))).filter(r=>r[0]!==''&&r[0]!=null).map(r=>({
+  const ss=getSS_(),sheets=getOrderSheets_();
+  if(!sheets.some(sh=>sh.getName()===monthlySheetName_(new Date()))&&!sheets.some(sh=>isCustomOrdersSheet_(sh)))sheets.push(currentOrdersSheet_());
+  return [].concat.apply([],sheets.map(sh=>isCustomOrdersSheet_(sh)?getCustomOrders_(sh):readTable_(sh,ORDER_HEADERS.length))).filter(r=>r.id|| (r[0]!==''&&r[0]!=null)).map(r=>{
+    if(r.id)return r;
+    return {
     id:String(r[0]),date:formatDate_(r[1]),time:String(r[2]||''),client:String(r[3]||''),contact:String(r[4]||''),
     product:String(r[5]||''),design:String(r[6]||''),qty:Number(r[7]||0),done:Number(r[8]||0),
     status:normalizeStatus_(r[9]),machine:String(r[10]||''),priority:String(r[13]||'normal'),updated:r[14]?String(r[14]):''
-  }));
+    };
+  });
+}
+function getOrderSheets_(){
+  const ss=getSS_(),sheets=ss.getSheets().filter(sh=>/^PEDIDOS_[A-ZÁÉÍÓÚ]+_\d{4}$/.test(sh.getName()));
+  const custom=ss.getSheetByName(CONFIG.ORDERS_SHEET);
+  if(custom&&isCustomOrdersSheet_(custom))sheets.unshift(custom);
+  return sheets;
+}
+function customOrderColumns_(sh){
+  const headers=sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(v=>String(v).trim().toLowerCase());
+  const find=name=>headers.indexOf(name.toLowerCase());
+  return {
+    date:find('fecha'),client:find('cliente'),contact:find('red social'),qty:find('cantidad'),
+    done:find('cantidad realizada'),product:find('que es ( llaverito, medalla iman)'),
+    design:find('diseño'),status:find('estado')
+  };
+}
+function isCustomOrdersSheet_(sh){
+  const c=customOrderColumns_(sh);
+  return c.date>=0&&c.client>=0&&c.qty>=0&&c.done>=0&&c.product>=0&&c.design>=0&&c.status>=0;
+}
+function getCustomOrders_(sh){
+  const c=customOrderColumns_(sh),values=readTable_(sh,sh.getLastColumn());
+  return values.map((row,i)=>({
+    id:sh.getName()+':'+(i+2),date:formatDate_(row[c.date]),time:'',client:String(row[c.client]||''),
+    contact:String(row[c.contact]||''),product:String(row[c.product]||''),design:String(row[c.design]||''),
+    qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:normalizeStatus_(row[c.status]),
+    machine:'',priority:'normal',updated:''
+  })).filter(order=>order.client||order.design||order.qty);
 }
 function getMachines_(){
   const rows=readTable_(ensureSheet_(getSS_(),CONFIG.MACHINES_SHEET,MACHINE_HEADERS),MACHINE_HEADERS.length),byId={};
@@ -165,7 +197,13 @@ function findOrderRow_(sh,id){
   return null;
 }
 function findOrderLocation_(id){
-  const ss=getSS_(),sheets=ss.getSheets().filter(sh=>/^PEDIDOS_[A-ZÁÉÍÓÚ]+_\d{4}$/.test(sh.getName()));
+  const ss=getSS_(),custom=ss.getSheetByName(CONFIG.ORDERS_SHEET);
+  const customPrefix=CONFIG.ORDERS_SHEET+':';
+  if(custom&&isCustomOrdersSheet_(custom)&&String(id).indexOf(customPrefix)===0){
+    const rowNumber=Number(String(id).slice(customPrefix.length));
+    if(rowNumber>=2&&rowNumber<=custom.getLastRow())return {sheet:custom,index:rowNumber,row:custom.getRange(rowNumber,1,1,custom.getLastColumn()).getValues()[0],custom:true};
+  }
+  const sheets=getOrderSheets_();
   for(let i=0;i<sheets.length;i++){const found=findOrderRow_(sheets[i],id);if(found)return {sheet:sheets[i],index:found.index,row:found.row};}
   return null;
 }
@@ -177,9 +215,19 @@ function addOrderUnlocked_(p){
   const operationId=String(p.operationId||'').trim(),design=String(p.design||'').trim(),qty=Number(p.qty||0);
   if(!operationId||!design||qty<=0)throw new Error('Datos de pedido incompletos');
   console.log('[POST] Pedido válido: '+operationId);
-  const ss=getSS_(),opSheet=ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
+  const ss=getSS_(),custom=ss.getSheetByName(CONFIG.ORDERS_SHEET),opSheet=ensureSheet_(ss,CONFIG.OPERATIONS_SHEET,OPERATION_HEADERS);
   const opRows=readTable_(opSheet,OPERATION_HEADERS.length);
   for(let i=0;i<opRows.length;i++)if(String(opRows[i][0])===operationId)return {success:true,orderId:String(opRows[i][1]||''),duplicate:true};
+  if(custom&&isCustomOrdersSheet_(custom)){
+    const c=customOrderColumns_(custom),row=new Array(custom.getLastColumn()).fill('');
+    row[c.date]=dateValue_(p.date);row[c.client]=String(p.client||'');row[c.contact]=String(p.contact||'');
+    row[c.qty]=qty;row[c.done]=0;row[c.product]=String(p.product||'');row[c.design]=design;row[c.status]='Pendiente';
+    const rowNumber=custom.getLastRow()+1;
+    custom.getRange(rowNumber,1,1,row.length).setValues([row]);
+    const customId=CONFIG.ORDERS_SHEET+':'+rowNumber;
+    opSheet.getRange(opSheet.getLastRow()+1,1,1,OPERATION_HEADERS.length).setValues([[operationId,customId,'OK',new Date()]]);
+    return {success:true,orderId:customId,created:true,sheet:custom.getName()};
+  }
   const sh=currentOrdersSheet_(),id=nextOrderId_(sh);
   console.log('[POST] ID generado: '+id);
   const now=new Date(),date=p.date?String(p.date):Utilities.formatDate(now,PRODUCTION_TIMEZONE,'yyyy-MM-dd');
@@ -190,6 +238,11 @@ function addOrderUnlocked_(p){
   opSheet.getRange(opSheet.getLastRow()+1,1,1,OPERATION_HEADERS.length).setValues([[operationId,id,'OK',now]]);
   console.log('[POST] guardado correctamente: '+id);
   return {success:true,orderId:id,created:true,sheet:sh.getName()};
+}
+function dateValue_(value){
+  if(!value)return new Date();
+  const parsed=new Date(String(value)+'T12:00:00');
+  return isNaN(parsed)?String(value):parsed;
 }
 function nextOrderId_(sh){
   const prefix=Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'MMM').toUpperCase().slice(0,3)+Utilities.formatDate(new Date(),PRODUCTION_TIMEZONE,'yyyy');
@@ -209,6 +262,7 @@ function updateBatch_(p){
 function updateOrder_(p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{return updateOrderUnlocked_(p);}finally{lock.releaseLock();}}
 function updateOrderUnlocked_(p){
   const location=findOrderLocation_(p.id);if(!location)throw new Error('Pedido no encontrado: '+String(p.id||''));const sh=location.sheet,found={index:location.index,row:location.row};
+  if(location.custom)return updateCustomOrderUnlocked_(location,p);
   const row=found.row,qty=Number(row[7]||0),previous=Number(row[8]||0),done=Math.min(qty,Math.max(0,Number(p.done||0)));
   const status=done>=qty?'COMPLETADO':done>0?'INICIADO':'PENDIENTE';
   row[8]=done;row[9]=status;row[14]=new Date();if(p.machine)row[10]=String(p.machine);
@@ -218,6 +272,14 @@ function updateOrderUnlocked_(p){
   if(status==='INICIADO'&&row[10])upsertActiveProduction_({id:String(row[0]),design:String(row[6]||''),planned:qty,done:done,machine:String(row[10]),colors:String(p.colors||'')});
   if(status==='COMPLETADO')removeActiveProduction_(String(row[0]));
   return {id:String(row[0]),done:done,status:normalizeStatus_(status)};
+}
+function updateCustomOrderUnlocked_(location,p){
+  const sh=location.sheet,c=customOrderColumns_(sh),row=location.row,qty=Number(row[c.qty]||0),done=Math.min(qty,Math.max(0,Number(p.done||0))),previous=Number(row[c.done]||0);
+  const status=done>=qty?'Completado':done>0?'Iniciado':'Pendiente';
+  row[c.done]=done;row[c.status]=status;
+  sh.getRange(location.index,1,1,row.length).setValues([row]);
+  if(done>previous)appendProductionEvent_({id:String(p.id),design:String(row[c.design]||''),units:done-previous,total:done,machine:'',colors:'',status:status});
+  return {id:String(p.id),done:done,status:normalizeStatus_(status)};
 }
 function updateMachine_(p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{return updateMachineUnlocked_(p);}finally{lock.releaseLock();}}
 function updateMachineUnlocked_(p){
