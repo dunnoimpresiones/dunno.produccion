@@ -64,6 +64,8 @@ let machines = [];
 // Producción diaria sincronizada con Google Sheets
 let productionDailyV2 = {};
 let productionTotalV2 = 0;
+let bambuPrintersV2 = [];
+let bambuSocketV2 = null;
 
 
 // =====================================================
@@ -2600,7 +2602,52 @@ function renderDashboardV2(){
       </div>
       <div class="dashboard-message">${motivationV2(today)}</div>
       <div class="dashboard-history">${days.map(day=>`<div class="history-bar" style="height:${Math.max(6,Math.round(day.units/max*40))}px" title="${day.label}: ${day.units} unidades"><span class="history-label">${day.label}</span></div>`).join("")}</div>
+    </div>
+    <div id="bambuFarmDashboard" class="dashboard-card bambu-farm-card"></div>`;
+  renderBambuFarmV2();
+}
+function renderBambuFarmV2(){
+  const el=document.getElementById("bambuFarmDashboard");
+  if(!el)return;
+  const online=bambuPrintersV2.filter(printer=>printer.connection==="ONLINE").length;
+  const cards=bambuPrintersV2.length?bambuPrintersV2.map(printer=>{
+    const state=String(printer.state||"OFFLINE");
+    const progress=Number(printer.progress||0);
+    const remaining=printer.remainingMinutes===null?"-":formatBambuMinutesV2(printer.remainingMinutes);
+    const ams=Array.isArray(printer.ams)?printer.ams:[];
+    return `<div class="bambu-card">
+      <div class="bambu-card-head"><div><div class="dashboard-title">${esc(printer.name||"Bambu")}</div><strong>${esc(printer.model||"Bambu Lab")}</strong></div><span class="bambu-state ${state.toLowerCase()}">${state}</span></div>
+      <div class="bambu-job">${esc(printer.job||"Sin trabajo activo")}</div>
+      <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
+      <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
+      <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
+      <div class="bambu-ams"><span>AMS / Lite</span><div class="bambu-slots">${ams.length?ams.map(tray=>{
+        const color=String(tray.color||"").replace("#","");
+        const active=String(printer.activeTray??"")===String(tray.slot-1)||String(printer.activeTray??"")===String(tray.slot);
+        return `<span class="bambu-slot ${active?"active":""}" title="${esc((tray.type||"Filamento")+" · Slot "+tray.slot)}"><i style="background:${color?`#${color}`:"#777"}"></i><b>${esc(tray.type||"PLA")}</b><small>${esc(String(tray.slot))}</small></span>`;
+      }).join(""):"<small>Sin datos</small>"}</div></div>
+      ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
+  }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
+  el.innerHTML=`<div class="bambu-farm-head"><div class="dashboard-title">Granja 3D</div><span>${online}/${bambuPrintersV2.length||1} ONLINE</span></div>${cards}`;
+}
+function formatBambuMinutesV2(value){
+  const total=Math.max(0,Math.round(Number(value)*60));
+  const hours=Math.floor(total/3600),minutes=Math.floor((total%3600)/60),seconds=total%60;
+  return [hours,minutes,seconds].map(value=>String(value).padStart(2,"0")).join(":");
+}
+function connectBambuAgentV2(){
+  const queryAgent=new URLSearchParams(window.location.search).get("bambuAgent");
+  const host=window.DUNNO_BAMBU_AGENT_URL||queryAgent||`ws://${window.location.hostname||"localhost"}:8787`;
+  try{
+    bambuSocketV2=new WebSocket(host);
+    bambuSocketV2.onmessage=event=>{
+      const message=JSON.parse(event.data);
+      if(message.type==="printers"&&Array.isArray(message.printers)){bambuPrintersV2=message.printers;renderBambuFarmV2();}
+    };
+    bambuSocketV2.onclose=()=>{bambuPrintersV2=bambuPrintersV2.map(printer=>({...printer,connection:"OFFLINE",state:"OFFLINE"}));renderBambuFarmV2();setTimeout(connectBambuAgentV2,5000)};
+    bambuSocketV2.onerror=()=>bambuSocketV2?.close();
+  }catch(error){console.warn("Agent Bambu:",error.message)}
 }
 const MOTIVATION_KEY_V2="dunno_motivacion_diaria_v2";
 const WORKSHOP_MESSAGE_KEY_V2="dunno_estado_taller_v2";
@@ -2718,7 +2765,7 @@ function renderWorkshopSidebarV3(){
   r.innerHTML=`<div class="summary-row"><span>Total pedidos</span><strong>${orders.length}</strong></div><div class="summary-row"><span>En producción</span><strong>${production}</strong></div><div class="summary-row"><span>Pendientes</span><strong>${pending}</strong></div><div class="summary-row"><span>Máquinas activas</span><strong>${active} / ${machines.length}</strong></div><div class="summary-row"><span>Producción total</span><strong>${totalDone} / ${totalQty}</strong></div><div class="summary-progress"><div style="width:${totalPct}%"></div></div><div class="summary-percent">${totalPct}%</div>`;
 }
 
-normalizeMachinesV2();initThemeV2();installMachineStyles();render();setupSearch();loadLastSyncV2();
+normalizeMachinesV2();initThemeV2();installMachineStyles();render();setupSearch();loadLastSyncV2();connectBambuAgentV2();
 if(pendingListV2().length||pendingMachineListV2().length||pendingOrderListV2().length){
   showSyncStatusV2("🟡 Guardando...");
   schedulePendingFlushV2(500);
