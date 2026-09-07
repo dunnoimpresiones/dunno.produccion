@@ -14,6 +14,11 @@ telemetría normalizada por WebSocket.
 El Agent escucha en `http://<ip-del-pc>:8787` y WebSocket en
 `ws://<ip-del-pc>:8787`. El frontend no recibe ni almacena credenciales MQTT.
 
+Los colores asignados físicamente a cada slot pueden fijarse en `.env` con
+`BAMBU_01_SLOT_N_COLOR` y `BAMBU_01_SLOT_N_TYPE`. Esos valores tienen
+prioridad sobre los colores reportados por el AMS. Después de cambiar `.env`,
+reiniciá el Agent.
+
 Para probar desde GitHub Pages, abrir temporalmente la aplicación con
 `?bambuAgent=ws://IP_DEL_PC_DEL_AGENT:8787`. No usar la IP de la impresora en
 esa URL: el Agent corre en la PC del taller. En una publicación HTTPS, el

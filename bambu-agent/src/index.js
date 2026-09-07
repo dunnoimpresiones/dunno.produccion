@@ -12,7 +12,12 @@ const config = {
     model: process.env.BAMBU_01_MODEL || "Bambu Lab A1",
     serial: process.env.BAMBU_01_SERIAL,
     ip: process.env.BAMBU_01_IP,
-    accessCode: process.env.BAMBU_01_ACCESS_CODE
+    accessCode: process.env.BAMBU_01_ACCESS_CODE,
+    slotAssignments: [1, 2, 3, 4].map(slot => ({
+      slot,
+      color: process.env[`BAMBU_01_SLOT_${slot}_COLOR`] || "",
+      type: process.env[`BAMBU_01_SLOT_${slot}_TYPE`] || ""
+    })).filter(assignment => assignment.color || assignment.type)
   }]
 };
 
@@ -105,7 +110,15 @@ function normalizeState(printer, previous, report) {
     remain: number(tray.remain)
   }))) : previous.ams;
   const assignedFilaments = filamentAssignments(print);
-  const displayFilaments = assignedFilaments.length ? assignedFilaments : trays;
+  const configuredFilaments = printer.slotAssignments.length
+    ? printer.slotAssignments.map(assignment => ({
+      ...assignment,
+      color: color(assignment.color)
+    }))
+    : [];
+  const displayFilaments = configuredFilaments.length
+    ? configuredFilaments
+    : assignedFilaments.length ? assignedFilaments : trays;
   const errors = Array.isArray(report.hms) ? report.hms : previous.errors;
   return {
     ...previous,
