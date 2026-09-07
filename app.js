@@ -66,6 +66,17 @@ let productionDailyV2 = {};
 let productionTotalV2 = 0;
 let bambuPrintersV2 = [];
 let bambuSocketV2 = null;
+const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
+function bambuSlotColorsV2(){
+  try{return JSON.parse(localStorage.getItem(BAMBU_SLOT_COLORS_KEY_V2)||"{}")}catch(_){return {}}
+}
+function setBambuSlotColorV2(printerId,slot,value){
+  const colors=bambuSlotColorsV2();
+  if(!colors[printerId])colors[printerId]={};
+  colors[printerId][slot]=value;
+  localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(colors));
+  renderBambuFarmV2();
+}
 
 
 // =====================================================
@@ -2615,17 +2626,23 @@ function renderBambuFarmV2(){
     const progress=Number(printer.progress||0);
     const remaining=printer.remainingMinutes===null?"-":formatBambuMinutesV2(printer.remainingMinutes);
     const ams=Array.isArray(printer.ams)?printer.ams:[];
+    const savedColors=bambuSlotColorsV2()[printer.id]||{};
+    const slots=Array.from({length:Math.max(16,ams.length)},(_,index)=>{
+      const slot=index+1;
+      return ams.find(item=>Number(item.slot)===slot)||{slot,color:"",type:""};
+    });
     return `<div class="bambu-card">
       <div class="bambu-card-head"><div><div class="dashboard-title">${esc(printer.name||"Bambu")}</div><strong>${esc(printer.model||"Bambu Lab")}</strong></div><span class="bambu-state ${state.toLowerCase()}">${state}</span></div>
       <div class="bambu-job">${esc(printer.job||"Sin trabajo activo")}</div>
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
-      <div class="bambu-ams"><span>AMS / Lite</span><div class="bambu-slots">${ams.length?ams.map(tray=>{
-        const color=String(tray.color||"").replace("#","");
+      <div class="bambu-ams"><span>Filamentos asignados</span><div class="bambu-slots">${slots.map(tray=>{
+        const configuredColor=savedColors[tray.slot];
+        const color=String(configuredColor||tray.color||"").replace("#","");
         const active=String(printer.activeTray??"")===String(tray.slot-1)||String(printer.activeTray??"")===String(tray.slot);
-        return `<span class="bambu-slot ${active?"active":""}" title="${esc((tray.type||"Sin configurar")+" · Slot "+tray.slot)}"><i style="background:${color?`#${color}`:"#777"}"></i><b>${esc(tray.type||"Sin configurar")}</b><small>Slot ${esc(String(tray.slot))}</small></span>`;
-      }).join(""):"<small>Sin datos</small>"}</div></div>
+        return `<span class="bambu-slot ${active?"active":""}" title="Slot ${tray.slot}"><input class="bambu-slot-color" type="color" value="${color?`#${color}`:"#777"} aria-label="Color del slot ${tray.slot}" onchange="setBambuSlotColorV2('${js(printer.id)}',${tray.slot},this.value)"><b>${esc(tray.type||"Sin configurar")}</b><small>Slot ${esc(String(tray.slot))}</small></span>`;
+      }).join("")}</div></div>
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
   }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
