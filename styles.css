@@ -424,3 +424,23 @@ html,body{background:var(--background)!important;color:var(--text-primary)!impor
   .machine-progress-block,.machine-colors-block{grid-column:2/-1!important}
   .machine-actions-block{grid-column:1/-1!important}
 }
+
+/* Contraste del resumen y estabilidad visual del selector de pedidos. */
+.bambu-filaments{
+  background:#fff!important;
+  border:1px solid #d5dce0!important;
+  border-radius:8px;
+  padding:9px!important;
+}
+.bambu-filaments>strong,
+.bambu-filament-column>b,
+.bambu-color-summary span,
+.bambu-color-summary small{
+  color:#000!important;
+}
+.summary-row,
+.summary-row strong,
+.dashboard-meta,
+.dashboard-meta strong{
+  color:#000!important;
+}
