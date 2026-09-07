@@ -2621,7 +2621,11 @@ function renderBambuFarmV2(){
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
-      <div class="bambu-ams"><span>AMS / Lite</span><div>${ams.length?ams.map(tray=>`<i title="${esc(tray.type||"Filamento")}" style="background:#${String(tray.color||"").replace("#","")}"></i>`).join(""):"Sin datos"}</div></div>
+      <div class="bambu-ams"><span>AMS / Lite</span><div class="bambu-slots">${ams.length?ams.map(tray=>{
+        const color=String(tray.color||"").replace("#","");
+        const active=String(printer.activeTray??"")===String(tray.slot-1)||String(printer.activeTray??"")===String(tray.slot);
+        return `<span class="bambu-slot ${active?"active":""}" title="${esc((tray.type||"Filamento")+" · Slot "+tray.slot)}"><i style="background:${color?`#${color}`:"#777"}"></i><b>${esc(tray.type||"PLA")}</b><small>${esc(String(tray.slot))}</small></span>`;
+      }).join(""):"<small>Sin datos</small>"}</div></div>
       ${printer.errors?.length?`<div class="bambu-errors">${esc(JSON.stringify(printer.errors).slice(0,180))}</div>`:""}
     </div>`;
   }).join(""):"<div class='muted'>Agent Bambu sin conexión</div>";
