@@ -444,3 +444,12 @@ html,body{background:var(--background)!important;color:var(--text-primary)!impor
 .dashboard-meta strong{
   color:#000!important;
 }
+.bambu-complete-button{
+  background:#16834b!important;
+  color:#fff!important;
+  border-color:#16834b!important;
+  font-weight:900;
+}
+.bambu-complete-button:hover{
+  background:#0d6539!important;
+}
