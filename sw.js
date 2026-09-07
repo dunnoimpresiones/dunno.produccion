@@ -1,8 +1,8 @@
-const CACHE = 'dunno-produccion-v2';
+const CACHE = 'dunno-produccion-v3';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=20260907-filament-modal',
+  './app.js?v=20260907-filament-slots',
   './styles.css',
   './manifest.webmanifest',
   './icons/icon-192.png',
