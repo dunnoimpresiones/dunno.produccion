@@ -86,6 +86,7 @@ function doGet(e){
       return respond_({ok:true,success:true,message:'Google Apps Script conectado',timestamp:new Date().toISOString()},p.callback);
     }
     if(p.action==='operationStatus' || p.action==='getOperationStatusV2')return respond_(operationStatusCompat_(p),p.callback);
+    if(p.action==='trackOrder')return respond_(trackOrder_(p),p.callback);
     console.log('Procesando GET: '+String(p.action||'dashboard'));
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
     const productionToday=getProductionDailyTotal_();
@@ -95,6 +96,18 @@ function doGet(e){
     console.log('Operación GET terminada');
     return respond_(result,p.callback);
   }catch(err){console.error('Error GET: '+errorMessage_(err));return respond_({ok:false,error:errorMessage_(err)},p.callback);}
+}
+function trackOrder_(p){
+  const id=String(p.id||'').trim();
+  if(!id)return {ok:false,error:'Ingresá un ID de pedido'};
+  const location=findOrderLocation_(id);
+  if(!location)return {ok:false,error:'No encontramos un pedido con ese ID'};
+  if(location.custom){
+    const c=customOrderColumns_(location.sheet),row=location.row,status=normalizeStatus_(row[c.status]);
+    return {ok:true,order:{id:String(row[c.id]||id),date:formatDate_(row[c.date]),design:String(row[c.design]||''),qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:status}};
+  }
+  const row=location.row;
+  return {ok:true,order:{id:String(row[0]),date:formatDate_(row[1]),design:String(row[6]||''),qty:Number(row[7]||0),done:Number(row[8]||0),status:normalizeStatus_(row[9])}};
 }
 function doPost(e){
   const p=e&&e.parameter?e.parameter:{};

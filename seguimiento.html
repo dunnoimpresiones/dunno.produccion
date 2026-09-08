@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17191b">
+  <title>Seguimiento de pedido - Dunno</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="tracking-page">
+  <main class="tracking-shell">
+    <div class="tracking-brand">DUNNO <span>SEGUIMIENTO</span></div>
+    <section class="tracking-card">
+      <h1>Seguimiento de pedido</h1>
+      <p>Ingresá el ID de tu pedido para consultar su estado.</p>
+      <form id="trackingForm">
+        <label for="trackingId">ID del pedido</label>
+        <div class="tracking-input-row"><input id="trackingId" autocomplete="off" required placeholder="Ej. PED-20260908-001"><button type="submit">Consultar</button></div>
+      </form>
+      <div id="trackingMessage" class="tracking-message" role="status"></div>
+      <article id="trackingResult" class="tracking-result hidden"></article>
+    </section>
+  </main>
+  <script>
+    const TRACKING_API_URL="https://script.google.com/macros/s/AKfycbyiy6bBWy_SAgy3G5FJuLLulE4S6wXY5L8mmJWp1VedseybXA8OY31KH4x3t6r0V9x05g/exec";
+    const TRACKING_TOKEN="Dunno0109";
+    const form=document.getElementById("trackingForm");
+    const input=document.getElementById("trackingId");
+    const message=document.getElementById("trackingMessage");
+    const result=document.getElementById("trackingResult");
+    const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+    const statusLabel=status=>status==="done"?"Completado":status==="production"?"En producción":"Pendiente";
+    function queryOrder(id){
+      return new Promise((resolve,reject)=>{
+        const callback="track_"+Date.now();
+        const script=document.createElement("script");
+        const cleanup=()=>{script.remove();delete window[callback]};
+        window[callback]=data=>{cleanup();data&&data.ok?resolve(data.order):reject(new Error(data?.error||"No se pudo consultar el pedido"))};
+        script.onerror=()=>{cleanup();reject(new Error("No se pudo conectar con Google Sheets"))};
+        script.src=TRACKING_API_URL+"?action=trackOrder&token="+encodeURIComponent(TRACKING_TOKEN)+"&id="+encodeURIComponent(id)+"&callback="+callback;
+        document.head.appendChild(script);
+        setTimeout(()=>{if(window[callback]){cleanup();reject(new Error("La consulta tardó demasiado"))}},15000);
+      });
+    }
+    form.addEventListener("submit",async event=>{
+      event.preventDefault();message.textContent="Consultando...";message.className="tracking-message";result.classList.add("hidden");
+      try{const order=await queryOrder(input.value.trim());result.innerHTML="<div class=\"tracking-status\">"+escapeHtml(statusLabel(order.status))+"</div><h2>"+escapeHtml(order.design||"Pedido")+"</h2><p>Pedido: <strong>"+escapeHtml(order.id)+"</strong></p><div class=\"tracking-progress\"><div style=\"width:"+Math.min(100,Math.round(order.done/Math.max(1,order.qty)*100))+"%\"></div></div><p>"+order.done+" de "+order.qty+" producidos</p>";result.classList.remove("hidden");message.textContent=""}
+      catch(error){message.textContent=error.message;message.className="tracking-message tracking-error"}
+    });
+  </script>
+</body>
+</html>
