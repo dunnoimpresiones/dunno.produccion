@@ -466,5 +466,4 @@ html,body{background:var(--background)!important;color:var(--text-primary)!impor
 .tracking-message{min-height:22px;margin-top:16px;color:#172024;font-weight:700}.tracking-error{color:#b42318}
 .tracking-result{border-top:1px solid #e2e6e8;margin-top:8px;padding-top:20px}.tracking-result h2{margin:8px 0;font-size:23px}.tracking-result p{color:#4f5a61}.tracking-status{display:inline-block;background:#dff6e8;color:#087642;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900}
 .tracking-progress{height:10px;background:#e7ebed;border-radius:20px;overflow:hidden;margin-top:18px}.tracking-progress div{height:100%;background:#16834b;border-radius:20px}.tracking-page .hidden{display:none}
-.tracking-alerts{display:flex;align-items:center;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid #e2e6e8}.tracking-alert-button{border:1px solid #d5a900;border-radius:8px;background:#fff8d7;color:#5a4500;padding:9px 11px;font-weight:800;cursor:pointer}.tracking-alerts small{color:#5d6870}
 @media(max-width:520px){.tracking-card{padding:22px}.tracking-input-row{flex-direction:column}.tracking-input-row button{height:42px}}
