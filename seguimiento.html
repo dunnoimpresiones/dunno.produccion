@@ -29,7 +29,19 @@
     const message=document.getElementById("trackingMessage");
     const result=document.getElementById("trackingResult");
     const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
-    const statusLabel=status=>status==="done"?"Completado":status==="production"?"En producción":"Pendiente";
+    const statusLabel=order=>{
+      const raw=String(order.statusText||"").toLowerCase();
+      if(raw.includes("listo"))return "Listo";
+      if(raw.includes("anillar")||order.status==="done")return "Por anillar";
+      return order.status==="production"?"En producción":"Pendiente";
+    };
+    const money=value=>value===null||value===undefined||value===""?"-":(typeof value==="number"?value.toLocaleString("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}):String(value));
+    const progressPhrase=order=>{
+      if(statusLabel(order)==="Listo")return "¡Tu pedido está listo!";
+      if(statusLabel(order)==="Por anillar")return "¡La impresión terminó! Ya falta muy poco.";
+      if(Number(order.done)>0)return "Cada vez falta menos para terminar tu pedido.";
+      return "Tu pedido ya está en marcha.";
+    };
     function queryOrder(id){
       return new Promise((resolve,reject)=>{
         const callback="track_"+Date.now();
@@ -43,7 +55,7 @@
       });
     }
     function renderOrder(order){
-      result.innerHTML="<div class=\"tracking-status\">"+escapeHtml(statusLabel(order.status))+"</div><h2>"+escapeHtml(order.design||"Pedido")+"</h2><p>Pedido: <strong>"+escapeHtml(order.id)+"</strong></p><div class=\"tracking-progress\"><div style=\"width:"+Math.min(100,Math.round(order.done/Math.max(1,order.qty)*100))+"%\"></div></div><p>"+order.done+" de "+order.qty+" producidos</p>";
+      result.innerHTML="<div class=\"tracking-status\">"+escapeHtml(statusLabel(order))+"</div><h2>"+escapeHtml(order.design||"Pedido")+"</h2><p>Pedido: <strong>"+escapeHtml(order.id)+"</strong></p><div class=\"tracking-details\"><div><span>Cliente</span><strong>"+escapeHtml(order.client||"-")+"</strong></div><div><span>Fecha del pedido</span><strong>"+escapeHtml(order.date||"-")+"</strong></div><div><span>Total</span><strong>"+escapeHtml(money(order.total))+"</strong></div><div><span>Seña</span><strong>"+escapeHtml(money(order.deposit))+"</strong></div><div><span>Falta abonar</span><strong>"+escapeHtml(money(order.balance))+"</strong></div></div><div class=\"tracking-progress\"><div style=\"width:"+Math.min(100,Math.round(order.done/Math.max(1,order.qty)*100))+"%\"></div></div><p>"+order.done+" de "+order.qty+" producidos</p><p class=\"tracking-phrase\">"+escapeHtml(progressPhrase(order))+"</p>";
       result.classList.remove("hidden");
     }
     form.addEventListener("submit",async event=>{
