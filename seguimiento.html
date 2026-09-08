@@ -19,6 +19,10 @@
       </form>
       <div id="trackingMessage" class="tracking-message" role="status"></div>
       <article id="trackingResult" class="tracking-result hidden"></article>
+      <div class="tracking-alerts">
+        <button id="trackingAlertsButton" type="button" class="tracking-alert-button">🔔 Activar avisos de cambios</button>
+        <small id="trackingAlertsStatus">Los avisos funcionan mientras esta página esté abierta.</small>
+      </div>
     </section>
   </main>
   <script>
@@ -28,6 +32,9 @@
     const input=document.getElementById("trackingId");
     const message=document.getElementById("trackingMessage");
     const result=document.getElementById("trackingResult");
+    const alertsButton=document.getElementById("trackingAlertsButton");
+    const alertsStatus=document.getElementById("trackingAlertsStatus");
+    const trackingState={order:null,alerts:false,timer:null};
     const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
     const statusLabel=status=>status==="done"?"Completado":status==="production"?"En producción":"Pendiente";
     function queryOrder(id){
@@ -42,9 +49,38 @@
         setTimeout(()=>{if(window[callback]){cleanup();reject(new Error("La consulta tardó demasiado"))}},15000);
       });
     }
+    function renderOrder(order){
+      result.innerHTML="<div class=\"tracking-status\">"+escapeHtml(statusLabel(order.status))+"</div><h2>"+escapeHtml(order.design||"Pedido")+"</h2><p>Pedido: <strong>"+escapeHtml(order.id)+"</strong></p><div class=\"tracking-progress\"><div style=\"width:"+Math.min(100,Math.round(order.done/Math.max(1,order.qty)*100))+"%\"></div></div><p>"+order.done+" de "+order.qty+" producidos</p>";
+      result.classList.remove("hidden");
+    }
+    function notifyStatusChange(previous,current){
+      if(!trackingState.alerts||!previous||previous.status===current.status)return;
+      const text="Tu pedido "+current.id+" cambió a: "+statusLabel(current.status);
+      alertsStatus.textContent="🔔 "+text;
+      if("Notification" in window&&Notification.permission==="granted")new Notification("Actualización de pedido",{body:text});
+      if(navigator.vibrate)navigator.vibrate([160,80,160]);
+    }
+    async function refreshTrackedOrder(){
+      if(!trackingState.order)return;
+      try{
+        const current=await queryOrder(trackingState.order.id);
+        notifyStatusChange(trackingState.order,current);
+        trackingState.order=current;
+        renderOrder(current);
+      }catch(error){console.warn("Seguimiento:",error.message)}
+    }
+    alertsButton.addEventListener("click",async()=>{
+      trackingState.alerts=true;
+      if("Notification" in window){
+        const permission=await Notification.requestPermission();
+        alertsStatus.textContent=permission==="granted"?"🔔 Avisos activados.":"Avisos visuales activados; el navegador no autorizó notificaciones.";
+      }else alertsStatus.textContent="🔔 Avisos activados mientras esta página esté abierta.";
+      if(trackingState.timer)clearInterval(trackingState.timer);
+      trackingState.timer=setInterval(refreshTrackedOrder,30000);
+    });
     form.addEventListener("submit",async event=>{
       event.preventDefault();message.textContent="Consultando...";message.className="tracking-message";result.classList.add("hidden");
-      try{const order=await queryOrder(input.value.trim());result.innerHTML="<div class=\"tracking-status\">"+escapeHtml(statusLabel(order.status))+"</div><h2>"+escapeHtml(order.design||"Pedido")+"</h2><p>Pedido: <strong>"+escapeHtml(order.id)+"</strong></p><div class=\"tracking-progress\"><div style=\"width:"+Math.min(100,Math.round(order.done/Math.max(1,order.qty)*100))+"%\"></div></div><p>"+order.done+" de "+order.qty+" producidos</p>";result.classList.remove("hidden");message.textContent=""}
+      try{const order=await queryOrder(input.value.trim());trackingState.order=order;renderOrder(order);message.textContent=""}
       catch(error){message.textContent=error.message;message.className="tracking-message tracking-error"}
     });
   </script>
