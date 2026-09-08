@@ -16,7 +16,7 @@ const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
 const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
 const PRODUCTION_TOTAL_LABEL = 'TOTAL GENERAL';
-const CUSTOM_ORDER_COLUMNS = {id:0,date:1,design:5,qty:6,done:7,status:17};
+const CUSTOM_ORDER_COLUMNS = {id:0,date:1,client:3,design:5,qty:6,done:7,status:9,deposit:15,total:16,balance:17};
 
 function getSS_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
 function setup(){
@@ -104,10 +104,10 @@ function trackOrder_(p){
   if(!location)return {ok:false,error:'No encontramos un pedido con ese ID'};
   if(location.custom){
     const c=customOrderColumns_(location.sheet),row=location.row,status=normalizeStatus_(row[c.status]);
-    return {ok:true,order:{id:String(row[c.id]||id),date:formatDate_(row[c.date]),design:String(row[c.design]||''),qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:status}};
+    return {ok:true,order:{id:String(row[c.id]||id),date:formatDate_(row[c.date]),client:String(row[c.client]||''),design:String(row[c.design]||''),qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:status,statusText:String(row[c.status]||''),deposit:row[c.deposit],total:row[c.total],balance:row[c.balance]}};
   }
   const row=location.row;
-  return {ok:true,order:{id:String(row[0]),date:formatDate_(row[1]),design:String(row[6]||''),qty:Number(row[7]||0),done:Number(row[8]||0),status:normalizeStatus_(row[9])}};
+  return {ok:true,order:{id:String(row[0]),date:formatDate_(row[1]),client:String(row[3]||''),design:String(row[6]||''),qty:Number(row[7]||0),done:Number(row[8]||0),status:normalizeStatus_(row[9]),statusText:String(row[9]||''),deposit:row[15],total:row[16],balance:row[17]}};
 }
 function doPost(e){
   const p=e&&e.parameter?e.parameter:{};
@@ -183,7 +183,7 @@ function isCustomOrdersSheet_(sh){
 function getCustomOrders_(sh){
   const c=customOrderColumns_(sh),values=readTable_(sh,sh.getLastColumn());
   return values.map((row,i)=>({
-    id:String(row[c.id]||''),date:formatDate_(row[c.date]),time:'',client:'',
+    id:String(row[c.id]||''),date:formatDate_(row[c.date]),time:'',client:String(row[c.client]||''),
     contact:'',product:'',design:String(row[c.design]||''),
     qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:normalizeStatus_(row[c.status]),
     machine:'',priority:'normal',updated:''
