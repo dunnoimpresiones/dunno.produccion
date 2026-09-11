@@ -4,7 +4,6 @@ const CONFIG = {
   SUMMARY_SHEET: 'RESUMEN_PRODUCCION',
   OPERATIONS_SHEET: 'OPERACIONES_PEDIDOS',
   MACHINES_SHEET: 'MAQUINAS',
-  FARM_CONFIG_SHEET: 'GRANJA_3D_CONFIG',
   TOKEN: 'Dunno0109'
 };
 
@@ -12,7 +11,6 @@ const ORDER_HEADERS = ['ID','Fecha','Cliente','Contacto','Cantidad realizada','C
 const PRODUCTION_HEADERS = ['Fecha','Pedido','Diseño','Cantidad a producir','Cantidad realizada','Máquina','Estado','Colores','Tipo','ID_PRODUCCION','TOTAL'];
 const SUMMARY_HEADERS = ['Fecha','Total_produccion'];
 const MACHINE_HEADERS = ['ID','Maquina','Pedido','Colores','Actualizado'];
-const FARM_CONFIG_HEADERS = ['Impresora','Pedido','Colores','Actualizado'];
 const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
 const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
@@ -85,7 +83,7 @@ function doGet(e){
     if(p.action)return respond_({ok:true,action:p.action,data:executeAction_(p)},p.callback);
     const productionToday=getProductionDailyTotal_();
     console.log('[PRODUCCION] TOTAL encontrado: '+productionToday);
-    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),productionTotal:productionToday,productionToday:productionToday,farmConfig:getFarmConfig_()};
+    const result={ok:true,orders:getOrders_(),production:getProductionSummary_(),productionTotal:productionToday,productionToday:productionToday};
     console.log('[PRODUCCION] Respuesta enviada: '+productionToday);
     console.log('Operación GET terminada');
     return respond_(result,p.callback);
@@ -133,47 +131,10 @@ function executeAction_(p){
   if(action==='updateOrder')return updateOrder_(p);
   if(action==='updateProduction')return updateProduction_(p);
   if(action==='updateStatus')return updateStatus_(p);
-  if(action==='getFarmConfig')return getFarmConfig_();
-  if(action==='updateFarmConfig')return updateFarmConfig_(p);
   if(action==='updateBatch')return updateBatch_(p);
   if(action==='deleteOrder')return deleteOrder_(p);
   if(action==='updateMachine')return updateMachine_(p);
   throw new Error('Acción no reconocida: '+action);
-}
-function getFarmConfig_(){
-  const sh=getSS_().getSheetByName(CONFIG.FARM_CONFIG_SHEET);
-  if(!sh||sh.getLastRow()<2)return {};
-  const out={};
-  readTable_(sh,FARM_CONFIG_HEADERS.length).forEach(row=>{
-    const printer=String(row[0]||'').trim();
-    if(!printer)return;
-    let colors={};
-    try{colors=row[2]?JSON.parse(String(row[2])):{};}catch(_){colors={};}
-    out[printer]={orderId:String(row[1]||''),colors:colors&&typeof colors==='object'?colors:{},updated:String(row[3]||'')};
-  });
-  return out;
-}
-function updateFarmConfig_(p){
-  const printer=String(p.printerId||p.printer||'').trim();
-  if(!printer)throw new Error('Falta la impresora de Granja 3D');
-  let colors={};
-  try{colors=p.colors?JSON.parse(String(p.colors)):{};}catch(_){throw new Error('Los colores de Granja 3D no tienen JSON válido');}
-  if(!colors||typeof colors!=='object'||Array.isArray(colors))throw new Error('Los colores de Granja 3D son inválidos');
-  const orderId=String(p.orderId||'').trim();
-  const ss=getSS_(),lock=LockService.getScriptLock();lock.waitLock(10000);
-  try{
-    let sh=ss.getSheetByName(CONFIG.FARM_CONFIG_SHEET);
-    if(!sh){
-      sh=ss.insertSheet(CONFIG.FARM_CONFIG_SHEET);
-      sh.getRange(1,1,1,FARM_CONFIG_HEADERS.length).setValues([FARM_CONFIG_HEADERS]);
-    }
-    const rows=readTable_(sh,FARM_CONFIG_HEADERS.length);
-    const index=rows.findIndex(row=>String(row[0]||'').trim()===printer);
-    const values=[[printer,orderId,JSON.stringify(colors),new Date()]];
-    if(index>=0)sh.getRange(index+2,1,1,FARM_CONFIG_HEADERS.length).setValues(values);
-    else sh.getRange(sh.getLastRow()+1,1,1,FARM_CONFIG_HEADERS.length).setValues(values);
-    return {ok:true,printerId:printer,orderId:orderId,colors:colors};
-  }finally{lock.releaseLock();}
 }
 function operationStatus_(p){
   const operationId=String(p.operationId||'').trim();

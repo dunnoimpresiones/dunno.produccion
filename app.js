@@ -50,7 +50,6 @@ let bambuPrintersV2 = [];
 let bambuSocketV2 = null;
 const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
 const BAMBU_ORDER_ASSIGNMENTS_KEY_V2="dunno_bambu_order_assignments_v2";
-const BAMBU_FARM_CONFIG_PENDING_KEY_V2="dunno_bambu_farm_config_pending_v2";
 const CAPACITY_CONFIG_V2={
   MACHINES:6,
   STANDARD_PER_MACHINE_PER_DAY:50,
@@ -161,37 +160,6 @@ function bambuSlotColorsV2(){
 function bambuOrderAssignmentsV2(){
   try{return JSON.parse(localStorage.getItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2)||"{}")}catch(_){return {}}
 }
-function saveFarmConfigLocalV2(config){
-  const assignments={},colors={};
-  Object.entries(config||{}).forEach(([printer,value])=>{
-    if(value?.orderId)assignments[printer]=String(value.orderId);
-    if(value?.colors&&typeof value.colors==="object")colors[printer]=value.colors;
-  });
-  localStorage.setItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2,JSON.stringify(assignments));
-  localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(colors));
-}
-function farmConfigPayloadV2(printerId){
-  const assignments=bambuOrderAssignmentsV2(),colors=bambuSlotColorsV2();
-  return {printerId:String(printerId),orderId:String(assignments[printerId]||""),colors:JSON.stringify(colors[printerId]||{})};
-}
-async function syncFarmConfigV2(printerId){
-  try{
-    await postAPI("updateFarmConfig",farmConfigPayloadV2(printerId));
-    const pending=JSON.parse(localStorage.getItem(BAMBU_FARM_CONFIG_PENDING_KEY_V2)||"{}");
-    delete pending[printerId];
-    localStorage.setItem(BAMBU_FARM_CONFIG_PENDING_KEY_V2,JSON.stringify(pending));
-  }catch(error){
-    const pending=JSON.parse(localStorage.getItem(BAMBU_FARM_CONFIG_PENDING_KEY_V2)||"{}");
-    pending[printerId]=farmConfigPayloadV2(printerId);
-    localStorage.setItem(BAMBU_FARM_CONFIG_PENDING_KEY_V2,JSON.stringify(pending));
-    console.error("[Granja 3D] No se pudo sincronizar la configuración:",error);
-  }
-}
-function applyFarmConfigV2(config){
-  if(!config||typeof config!=="object")return;
-  saveFarmConfigLocalV2(config);
-  render();
-}
 function isResolvedOrderV2(order){
   const status=String(order?.status||order?.estado||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
   return status==="done"||status==="listo"||status==="completado"||status==="mensaje"||status==="entregado";
@@ -243,7 +211,6 @@ function assignBambuOrderV2(printerId,orderId){
   else delete assignments[printerId];
   localStorage.setItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2,JSON.stringify(assignments));
   render();
-  syncFarmConfigV2(printerId);
 }
 function setBambuDoneV2(printerId,amount){
   const order=bambuAssignedOrderV2(printerId);
@@ -256,7 +223,6 @@ function setBambuSlotColorV2(printerId,slot,value){
   colors[printerId][slot]=value;
   localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(colors));
   renderBambuFarmV2();
-  syncFarmConfigV2(printerId);
 }
 function bambuFilamentConfigV2(printerId){
   const saved=bambuSlotColorsV2()[printerId]||{};
@@ -278,7 +244,6 @@ function saveBambuFilamentConfigV2(printerId,values){
   localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(all));
   closeBambuFilamentModalV2();
   renderBambuFarmV2();
-  syncFarmConfigV2(printerId);
 }
 function persistBambuFilamentConfigV2(printerId,values){
   const all=bambuSlotColorsV2();
@@ -288,7 +253,6 @@ function persistBambuFilamentConfigV2(printerId,values){
   },{});
   localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(all));
   renderBambuFarmV2();
-  syncFarmConfigV2(printerId);
 }
 function openBambuFilamentModalV2(printerId){
   const printer=bambuPrintersV2.find(item=>item.id===printerId);
@@ -1120,7 +1084,6 @@ function getOrdersFromAPI() {
           production: data.production || {},
           productionToday: Number(data.productionToday ?? data.productionTotal ?? 0),
           machines: [],
-          farmConfig: data.farmConfig && typeof data.farmConfig==="object" ? data.farmConfig : {}
         });
       };
       window[callback] = data => {
@@ -1170,7 +1133,6 @@ async function syncFromSheets(
     const result =
       await getOrdersFromAPI();
 
-    if(!Array.isArray(result) && result.farmConfig)applyFarmConfigV2(result.farmConfig);
 
     const remoteOrders=Array.isArray(result) ? result : (result.orders || []);
     orders=remoteOrders.map(remote=>{
