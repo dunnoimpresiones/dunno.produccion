@@ -197,14 +197,14 @@ function daysUntilV2(value){
 function capacityPlanV2(){
   const pending=orders.filter(order=>order.status!=="done"&&Number(order.qty||0)>Number(order.done||0));
   const remaining=pending.reduce((sum,order)=>sum+Math.max(0,Number(order.qty||0)-Number(order.done||0)),0);
-  const dueToday=pending.filter(order=>daysUntilV2(order.date)<=0)
+  const dueToday=pending.filter(order=>daysUntilV2(order.dueDate||order.date)<=0)
     .reduce((sum,order)=>sum+Math.max(0,Number(order.qty||0)-Number(order.done||0)),0);
-  const horizon=pending.filter(order=>Number.isFinite(daysUntilV2(order.date)));
+  const horizon=pending.filter(order=>Number.isFinite(daysUntilV2(order.dueDate||order.date)));
   let requiredDaily=0;
-  const dates=[...new Set(horizon.map(order=>dateOnlyV2(order.date)))].sort();
+  const dates=[...new Set(horizon.map(order=>dateOnlyV2(order.dueDate||order.date)))].sort();
   dates.forEach(date=>{
     const days=Math.max(1,daysUntilV2(date)+1);
-    const cumulative=horizon.filter(order=>dateOnlyV2(order.date)<=date)
+    const cumulative=horizon.filter(order=>dateOnlyV2(order.dueDate||order.date)<=date)
       .reduce((sum,order)=>sum+Math.max(0,Number(order.qty||0)-Number(order.done||0)),0);
     requiredDaily=Math.max(requiredDaily,Math.ceil(cumulative/days));
   });
@@ -2609,10 +2609,7 @@ function queueOrderChangeV2(order,productionContext={}){
   const version=Date.now()+"-"+Math.random().toString(36).slice(2);
   pendingChangesV2[key]={
     id:order.id,
-    done:Number(order.done),
     status:order.status,
-    machine:productionContext.machine||"",
-    colors:productionContext.colors||"",
     version
   };
   savingOrdersV2[key]=true;
@@ -2621,22 +2618,10 @@ function queueOrderChangeV2(order,productionContext={}){
   schedulePendingFlushV2();
 }
 function queueMachineChangeV2(machine){
-  const key=String(machine.id);
-  pendingMachinesV2[key]={
-    machineId:machine.id,
-    orderId:String(machine.orderId||""),
-    colors:JSON.stringify(Array.from(new Set(machine.colors||[]))),
-    version:Date.now()+"-"+Math.random().toString(36).slice(2)
-  };
-  savePendingMachinesV2();
-  showSyncStatusV2("🟡 Guardando...");
-  schedulePendingFlushV2();
+  console.info("[Sheets] Cambios de máquinas solo locales; no se envían a Google Sheets");
 }
 function queueNewOrderV2(order){
-  pendingOrdersV2[String(order.id)]={...order,version:Date.now()+"-"+Math.random().toString(36).slice(2)};
-  savePendingOrdersV2();
-  showSyncStatusV2("🟡 Guardando...");
-  schedulePendingFlushV2();
+  console.info("[Sheets] Los nuevos pedidos deben crearse en Google Sheets; no se envían desde la aplicación");
 }
 async function flushPendingChangesV2(){
   clearTimeout(pendingFlushTimerV2);
@@ -2644,8 +2629,8 @@ async function flushPendingChangesV2(){
   if(flushingPendingV2||(!pendingListV2().length&&!pendingMachineListV2().length&&!pendingOrderListV2().length))return;
   flushingPendingV2=true;
   const batch=pendingListV2().map(change=>({...change}));
-  const machineBatch=pendingMachineListV2().map(change=>({...change}));
-  const orderBatch=pendingOrderListV2().map(change=>({...change}));
+  const machineBatch=[];
+  const orderBatch=[];
   showSyncStatusV2("🟡 Guardando...");
   try{
     const delays=[0,2000,5000];
@@ -2654,15 +2639,8 @@ async function flushPendingChangesV2(){
       if(delays[attempt])await wait(delays[attempt]);
       try{response=await postAPI("updateBatch",{changes:JSON.stringify(batch.map(change=>({
         id:change.id,
-        done:change.done
-      }))),machines:JSON.stringify(machineBatch.map(machine=>({
-        machineId:machine.machineId,
-        orderId:machine.orderId,
-        colors:machine.colors
-      }))),newOrders:JSON.stringify(orderBatch.map(order=>({
-        id:order.id,client:order.client,design:order.design,qty:order.qty,
-        date:order.date,priority:order.priority,contact:order.contact,product:order.product
-      })))});break}
+        status:change.status
+      }))),machines:"[]",newOrders:"[]"});break}
       catch(error){if(attempt===delays.length-1)throw error}
     }
     if(!response?.ok)throw new Error("Google Apps Script no confirmó el lote");
