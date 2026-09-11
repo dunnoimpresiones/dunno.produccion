@@ -69,6 +69,12 @@ let bambuPrintersV2 = [];
 let bambuSocketV2 = null;
 const BAMBU_SLOT_COLORS_KEY_V2="dunno_bambu_slot_colors_v2";
 const BAMBU_ORDER_ASSIGNMENTS_KEY_V2="dunno_bambu_order_assignments_v2";
+const CAPACITY_CONFIG_V2={
+  MACHINES:6,
+  STANDARD_PER_MACHINE_PER_DAY:50,
+  SAFE_DAILY_CAPACITY:250
+};
+CAPACITY_CONFIG_V2.STANDARD_DAILY_CAPACITY=CAPACITY_CONFIG_V2.MACHINES*CAPACITY_CONFIG_V2.STANDARD_PER_MACHINE_PER_DAY;
 const BAMBU_MAX_FILAMENT_SLOTS_V2=16;
 const BAMBU_FILAMENT_CATALOG_V2=[
   ["white","Blanco","#FFFFFF"],["black","Negro","#111111"],["dark-gray","Gris oscuro","#42484D"],["light-gray","Gris claro","#C7CDD1"],
@@ -176,6 +182,38 @@ function bambuOrderAssignmentsV2(){
 function bambuAssignedOrderV2(printerId){
   const id=bambuOrderAssignmentsV2()[printerId];
   return orders.find(order=>String(order.id)===String(id)&&order.status!=="done")||null;
+}
+function dateOnlyV2(value){
+  const text=String(value||"").slice(0,10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text)?text:"";
+}
+function daysUntilV2(value){
+  const date=dateOnlyV2(value);
+  if(!date)return Number.POSITIVE_INFINITY;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const target=new Date(date+"T00:00:00"); target.setHours(0,0,0,0);
+  return Math.max(0,Math.ceil((target-today)/86400000));
+}
+function capacityPlanV2(){
+  const pending=orders.filter(order=>order.status!=="done"&&Number(order.qty||0)>Number(order.done||0));
+  const remaining=pending.reduce((sum,order)=>sum+Math.max(0,Number(order.qty||0)-Number(order.done||0)),0);
+  const dueToday=pending.filter(order=>daysUntilV2(order.date)<=0)
+    .reduce((sum,order)=>sum+Math.max(0,Number(order.qty||0)-Number(order.done||0)),0);
+  const horizon=pending.filter(order=>Number.isFinite(daysUntilV2(order.date)));
+  let requiredDaily=0;
+  const dates=[...new Set(horizon.map(order=>dateOnlyV2(order.date)))].sort();
+  dates.forEach(date=>{
+    const days=Math.max(1,daysUntilV2(date)+1);
+    const cumulative=horizon.filter(order=>dateOnlyV2(order.date)<=date)
+      .reduce((sum,order)=>sum+Math.max(0,Number(order.qty||0)-Number(order.done||0)),0);
+    requiredDaily=Math.max(requiredDaily,Math.ceil(cumulative/days));
+  });
+  const critical=requiredDaily>CAPACITY_CONFIG_V2.STANDARD_DAILY_CAPACITY||dueToday>CAPACITY_CONFIG_V2.STANDARD_DAILY_CAPACITY;
+  const priority=!critical&&(requiredDaily>CAPACITY_CONFIG_V2.SAFE_DAILY_CAPACITY||dueToday>CAPACITY_CONFIG_V2.SAFE_DAILY_CAPACITY);
+  const level=critical?"URGENTE":priority?"PRIORIDAD":"NORMAL";
+  const target=critical?Math.max(requiredDaily,dueToday):priority?CAPACITY_CONFIG_V2.STANDARD_DAILY_CAPACITY:CAPACITY_CONFIG_V2.SAFE_DAILY_CAPACITY;
+  const planned=Math.min(remaining,target);
+  return {level,remaining,dueToday,requiredDaily,planned,target,standard:CAPACITY_CONFIG_V2.STANDARD_DAILY_CAPACITY,safe:CAPACITY_CONFIG_V2.SAFE_DAILY_CAPACITY};
 }
 function assignBambuOrderV2(printerId,orderId){
   const assignments=bambuOrderAssignmentsV2();
@@ -2796,6 +2834,7 @@ function renderDashboardV2(force=false){
   const names=workshopMachines.filter(machine=>!machine.running).map(machine=>machine.name);
   const workshopMessage=workshopMessageV2(inactive,workshopMachines.length);
   const production=productionDailyV2||{};
+  const capacity=capacityPlanV2();
   const days=[];
 
   for(let i=6;i>=0;i--){
@@ -2826,6 +2865,12 @@ function renderDashboardV2(force=false){
         <div class="workshop-message">${workshopMessage}</div>
       </div>
       <div class="dashboard-meta"><span><strong>${active}</strong> / ${workshopMachines.length} imprimiendo</span></div>
+    </div>
+    <div class="dashboard-card capacity-plan-card ${capacity.level.toLowerCase()}">
+      <div class="dashboard-title">Planificación conservadora</div>
+      <div class="capacity-plan-head"><strong>${capacity.level==="URGENTE"?"🔴":capacity.level==="PRIORIDAD"?"🟠":"🟢"} ${capacity.level}</strong><span>${capacity.planned} unidades hoy</span></div>
+      <div class="capacity-plan-metrics"><span>Segura <b>${capacity.safe}</b></span><span>Estándar <b>${capacity.standard}</b></span><span>Reserva <b>${Math.max(0,capacity.standard-capacity.planned)}</b></span></div>
+      ${capacity.level==="URGENTE"?`<div class="capacity-extra-alert">⚠️ PRODUCCIÓN EXTRAORDINARIA<br><small>Se necesitan ${capacity.planned} unidades hoy para evitar atrasos.</small></div>`:`<div class="capacity-plan-note">${capacity.remaining?`Se conservan espacios libres como reserva estratégica.`:"No hay producción pendiente."}</div>`}
     </div>
     <div class="dashboard-card">
       <div class="dashboard-title">Producción de hoy</div>
