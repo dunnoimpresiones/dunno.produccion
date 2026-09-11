@@ -160,9 +160,13 @@ function bambuSlotColorsV2(){
 function bambuOrderAssignmentsV2(){
   try{return JSON.parse(localStorage.getItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2)||"{}")}catch(_){return {}}
 }
+function isResolvedOrderV2(order){
+  const status=String(order?.status||order?.estado||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  return status==="done"||status==="listo"||status==="completado"||status==="mensaje"||status==="entregado";
+}
 function bambuAssignedOrderV2(printerId){
   const id=bambuOrderAssignmentsV2()[printerId];
-  return orders.find(order=>String(order.id)===String(id)&&order.status!=="done")||null;
+  return orders.find(order=>String(order.id)===String(id)&&!isResolvedOrderV2(order))||null;
 }
 function dateOnlyV2(value){
   const text=String(value||"").slice(0,10);
@@ -198,7 +202,12 @@ function capacityPlanV2(){
 }
 function assignBambuOrderV2(printerId,orderId){
   const assignments=bambuOrderAssignmentsV2();
-  if(orderId)assignments[printerId]=String(orderId);
+  const colors=bambuSlotColorsV2();
+  if(orderId){
+    assignments[printerId]=String(orderId);
+    delete colors[printerId];
+    localStorage.setItem(BAMBU_SLOT_COLORS_KEY_V2,JSON.stringify(colors));
+  }
   else delete assignments[printerId];
   localStorage.setItem(BAMBU_ORDER_ASSIGNMENTS_KEY_V2,JSON.stringify(assignments));
   render();
@@ -1074,7 +1083,7 @@ function getOrdersFromAPI() {
           orders: Array.isArray(data.orders) ? data.orders : [],
           production: data.production || {},
           productionToday: Number(data.productionToday ?? data.productionTotal ?? 0),
-          machines: []
+          machines: [],
         });
       };
       window[callback] = data => {
@@ -1904,7 +1913,7 @@ function renderLegacy() {
 
   const filtered =
     orders.filter(
-      o =>
+      o => !isResolvedOrderV2(o) &&
 
         (
           String(o.id) +
@@ -2853,13 +2862,13 @@ function renderBambuFarmV2(){
     const remaining=printer.remainingMinutes===null?"-":formatBambuMinutesV2(printer.remainingMinutes);
     const configured=bambuFilamentConfigV2(printer.id);
     const assignedOrder=bambuAssignedOrderV2(printer.id);
-    const orderOptions=orders.filter(order=>order.status!=="done").map(order=>`<option value="${escAttr(order.id)}" ${assignedOrder&&String(assignedOrder.id)===String(order.id)?"selected":""}>${esc(order.design||"Sin diseño")} (#${esc(order.id)})</option>`).join("");
+    const orderOptions=orders.filter(order=>!isResolvedOrderV2(order)).map(order=>`<option value="${escAttr(order.id)}" ${assignedOrder&&String(assignedOrder.id)===String(order.id)?"selected":""}>${esc(order.design||"Sin diseño")} (#${esc(order.id)})</option>`).join("");
     const filamentColumns=Array.from({length:4},(_,column)=>configured
       .map((id,index)=>({id,color:bambuColorByIdV2(id),slot:index+1}))
       .filter(item=>item.color&&((item.slot-1)%4===column)));
     return `<div class="bambu-card">
       <div class="bambu-card-head"><div><div class="dashboard-title">${esc(printer.name||"Bambu")}</div><strong>${esc(printer.model||"Bambu Lab")}</strong></div><span class="bambu-state ${state.toLowerCase()}">${state}</span></div>
-      <div class="bambu-job">${esc(printer.job||"Sin trabajo activo")}</div>
+      <div class="bambu-job">${assignedOrder?`<strong>${esc(assignedOrder.design||assignedOrder.product||"Sin nombre")}</strong> (#${esc(assignedOrder.id)})`:"Sin pedido seleccionado"}</div>
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
@@ -2965,7 +2974,7 @@ function renderGroupedProductionV2(){
 function render(){
   const search=document.getElementById("search");
   const q=(search?.value||"").toLowerCase();
-  const filtered=orders.filter(o=>(String(o.id)+" "+String(o.client)+" "+String(o.design)).toLowerCase().includes(q));
+  const filtered=orders.filter(o=>!isResolvedOrderV2(o)&&(String(o.id)+" "+String(o.client)+" "+String(o.design)).toLowerCase().includes(q));
   document.getElementById("pendingCount").textContent=orders.filter(o=>o.status==="pending").length;
   document.getElementById("productionCount").textContent=orders.filter(o=>o.status==="production").length;
   document.getElementById("doneCount").textContent=orders.filter(o=>o.status==="done").length;
@@ -2989,7 +2998,7 @@ function renderWorkshopSidebarV3(){
   const r=document.getElementById("sidebarResumenV3");
   if(!p||!r)return;
   const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;
-  const rows=orders.filter(o=>o.status!=="done").slice(0,8);
+  const rows=orders.filter(o=>!isResolvedOrderV2(o)).slice(0,8);
   p.innerHTML=rows.length?rows.map(o=>{
     const late=o.date && new Date(o.date)<new Date();
     const label=o.status==="production"?"Produciendo":o.status==="done"?"Listo":"Pendiente";
