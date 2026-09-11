@@ -16,7 +16,7 @@ const MACHINE_NAMES = ['A1','A2','A3','A4','A5','A6','Amini','V3','CR10'];
 const PRODUCTION_TIMEZONE = 'America/Argentina/Buenos_Aires';
 const OPERATION_HEADERS = ['Operacion','Pedido','Estado','Actualizado'];
 const PRODUCTION_TOTAL_LABEL = 'TOTAL GENERAL';
-const CUSTOM_ORDER_COLUMNS = {id:0,date:1,client:3,product:5,design:6,qty:7,done:8,status:9,deposit:15,total:16,balance:17};
+const CUSTOM_ORDER_COLUMNS = {id:0,date:1,client:2,contact:3,done:4,qty:5,product:6,design:7,deposit:11,total:12,province:13,dueDate:14,approxDate:15,status:16};
 
 function getSS_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
 function setup(){
@@ -104,10 +104,10 @@ function trackOrder_(p){
   if(!location)return {ok:false,error:'No encontramos un pedido con ese ID'};
   if(location.custom){
     const c=customOrderColumns_(location.sheet),row=location.row,status=normalizeStatus_(row[c.status]);
-    return {ok:true,order:{id:String(row[c.id]||id),date:formatDate_(row[c.date]),client:String(row[c.client]||''),product:String(row[c.product]||''),design:String(row[c.design]||''),qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:status,statusText:String(row[c.status]||''),deposit:row[c.deposit],total:row[c.total],balance:row[c.balance]}};
+    return {ok:true,order:{id:String(row[c.id]||id),date:formatDate_(row[c.date]),dueDate:formatDate_(row[c.dueDate]),client:String(row[c.client]||''),product:String(row[c.product]||''),design:String(row[c.design]||''),qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),pending:Math.max(0,Number(row[c.qty]||0)-Number(row[c.done]||0)),status:status,statusText:String(row[c.status]||''),deposit:row[c.deposit],total:row[c.total],balance:row[c.total]=== ''?'':Number(row[c.total]||0)-Number(row[c.deposit]||0)}};
   }
   const row=location.row;
-  return {ok:true,order:{id:String(row[0]),date:formatDate_(row[1]),client:String(row[3]||''),design:String(row[6]||''),qty:Number(row[7]||0),done:Number(row[8]||0),status:normalizeStatus_(row[9]),statusText:String(row[9]||''),deposit:row[15],total:row[16],balance:row[17]}};
+  return {ok:true,order:{id:String(row[0]),date:formatDate_(row[1]),dueDate:formatDate_(row[14]),client:String(row[2]||''),product:String(row[6]||''),design:String(row[7]||''),qty:Number(row[5]||0),done:Number(row[4]||0),pending:Math.max(0,Number(row[5]||0)-Number(row[4]||0)),status:normalizeStatus_(row[16]),statusText:String(row[16]||''),deposit:row[11],total:row[12],balance:Number(row[12]||0)-Number(row[11]||0)}};
 }
 function doPost(e){
   const p=e&&e.parameter?e.parameter:{};
@@ -177,15 +177,14 @@ function customOrderColumns_(sh){
   return CUSTOM_ORDER_COLUMNS;
 }
 function isCustomOrdersSheet_(sh){
-  const c=customOrderColumns_(sh);
-  return sh.getLastColumn()>=18;
+  return sh.getLastColumn()>=17;
 }
 function getCustomOrders_(sh){
   const c=customOrderColumns_(sh),values=readTable_(sh,sh.getLastColumn());
   return values.map((row,i)=>({
-    id:String(row[c.id]||''),date:formatDate_(row[c.date]),time:'',client:String(row[c.client]||''),
-    contact:'',product:String(row[c.product]||''),design:String(row[c.design]||''),
-    qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),status:normalizeStatus_(row[c.status]),
+    id:String(row[c.id]||''),date:formatDate_(row[c.date]),dueDate:formatDate_(row[c.dueDate]),time:'',client:String(row[c.client]||''),
+    contact:String(row[c.contact]||''),product:String(row[c.product]||''),design:String(row[c.design]||''),
+    qty:Number(row[c.qty]||0),done:Number(row[c.done]||0),pending:Math.max(0,Number(row[c.qty]||0)-Number(row[c.done]||0)),status:normalizeStatus_(row[c.status]),
     machine:'',priority:'normal',updated:''
   })).filter(order=>order.id||order.design||order.qty);
 }
@@ -216,10 +215,10 @@ function findOrderLocation_(id){
   return null;
 }
 function addOrder_(p){
-  const lock=LockService.getScriptLock();lock.waitLock(10000);
-  try{return addOrderUnlocked_(p);}finally{lock.releaseLock();}
+  throw new Error('La aplicación no puede crear pedidos en Google Sheets; solo puede actualizar Estado (Q)');
 }
 function addOrderUnlocked_(p){
+  throw new Error('La aplicación no puede crear filas ni modificar datos de pedidos en Google Sheets');
   const operationId=String(p.operationId||'').trim(),design=String(p.design||'').trim(),qty=Number(p.qty||0);
   if(!operationId||!design||qty<=0)throw new Error('Datos de pedido incompletos');
   console.log('[POST] Pedido válido: '+operationId);
@@ -267,38 +266,28 @@ function nextOrderId_(sh){
   return prefix+String(max+1).padStart(4,'0');
 }
 function updateBatch_(p){
-  let changes=[],machines=[],newOrders=[];
+  let changes=[];
   try{changes=JSON.parse(String(p.changes||'[]'));}catch(_){throw new Error('El lote de pedidos no tiene JSON válido');}
-  try{machines=JSON.parse(String(p.machines||'[]'));}catch(_){throw new Error('El lote de máquinas no tiene JSON válido');}
-  try{newOrders=JSON.parse(String(p.newOrders||'[]'));}catch(_){throw new Error('El lote de nuevos pedidos no tiene JSON válido');}
-  if(!Array.isArray(changes)||!Array.isArray(machines)||!Array.isArray(newOrders)||changes.length>50||machines.length>50||newOrders.length>50)throw new Error('El lote de cambios es inválido o demasiado grande');
+  if(!Array.isArray(changes)||changes.length>50)throw new Error('El lote de cambios es inválido o demasiado grande');
   const lock=LockService.getScriptLock();lock.waitLock(10000);
-  try{newOrders.forEach(addOrderUnlocked_);changes.forEach(updateOrderUnlocked_);machines.forEach(updateMachineUnlocked_);return {newOrders:newOrders.length,orders:changes.length,machines:machines.length};}finally{lock.releaseLock();}
+  try{changes.forEach(updateOrderUnlocked_);return {orders:changes.length};}finally{lock.releaseLock();}
 }
 function updateOrder_(p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{return updateOrderUnlocked_(p);}finally{lock.releaseLock();}}
 function updateOrderUnlocked_(p){
   const location=findOrderLocation_(p.id);if(!location)throw new Error('Pedido no encontrado: '+String(p.id||''));const sh=location.sheet,found={index:location.index,row:location.row};
   if(location.custom)return updateCustomOrderUnlocked_(location,p);
-  const row=found.row,qty=Number(row[7]||0),previous=Number(row[8]||0),done=Math.min(qty,Math.max(0,Number(p.done||0)));
-  const status=done>=qty?'COMPLETADO':done>0?'INICIADO':'PENDIENTE';
-  row[8]=done;row[9]=status;row[14]=new Date();if(p.machine)row[10]=String(p.machine);
-  if(status==='INICIADO'&&!row[11])row[11]=new Date();if(status==='COMPLETADO'&&!row[12])row[12]=new Date();
-  sh.getRange(found.index,1,1,ORDER_HEADERS.length).setValues([row]);
-  if(done>previous)appendProductionEvent_({id:String(row[0]),design:String(row[6]||''),units:done-previous,total:done,machine:String(p.machine||row[10]||''),colors:String(p.colors||''),status:status});
-  if(status==='INICIADO'&&row[10])upsertActiveProduction_({id:String(row[0]),design:String(row[6]||''),planned:qty,done:done,machine:String(row[10]),colors:String(p.colors||'')});
-  if(status==='COMPLETADO')removeActiveProduction_(String(row[0]));
-  return {id:String(row[0]),done:done,status:normalizeStatus_(status)};
+  throw new Error('La hoja oficial solo permite actualizar Estado (Q)');
 }
 function updateCustomOrderUnlocked_(location,p){
-  const sh=location.sheet,c=customOrderColumns_(sh),row=location.row,qty=Number(row[c.qty]||0),done=Math.min(qty,Math.max(0,Number(p.done||0))),previous=Number(row[c.done]||0);
-  const status=done>=qty?'Completado':done>0?'En producción':'Pendiente';
-  sh.getRange(location.index,c.done+1).setValue(done);
+  const sh=location.sheet,c=customOrderColumns_(sh);
+  const requested=String(p.status||'').toLowerCase();
+  const status=requested==='done'||requested==='listo'?'Listo':requested==='production'||requested==='producing'||requested==='produciendo'?'Produciendo':requested==='iniciado'?'Iniciado':requested==='mensaje'?'Mensaje':requested==='entregado'?'Entregado':'Pendiente';
   sh.getRange(location.index,c.status+1).setValue(status);
-  if(done>previous)appendProductionEvent_({id:String(p.id),design:String(row[c.design]||''),units:done-previous,total:done,machine:'',colors:'',status:status});
-  return {id:String(p.id),done:done,status:normalizeStatus_(status)};
+  return {id:String(p.id),done:Number(location.row[c.done]||0),qty:Number(location.row[c.qty]||0),status:normalizeStatus_(status)};
 }
-function updateMachine_(p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{return updateMachineUnlocked_(p);}finally{lock.releaseLock();}}
+function updateMachine_(p){throw new Error('La aplicación no puede modificar máquinas en Google Sheets');}
 function updateMachineUnlocked_(p){
+  throw new Error('La aplicación no puede modificar la hoja de máquinas');
   const id=Number(p.machineId||0);if(id<1||id>MACHINE_NAMES.length)throw new Error('Máquina inválida');
   const sh=ensureSheet_(getSS_(),CONFIG.MACHINES_SHEET,MACHINE_HEADERS),colors=parseColors_(p.colors),orderId=String(p.orderId||'');
   sh.getRange(id+1,1,1,5).setValues([[id,MACHINE_NAMES[id-1],orderId,JSON.stringify(colors),new Date()]]);
@@ -360,12 +349,11 @@ function getProductionSummary_(){
   const out={};readTable_(sh,2).forEach(r=>{if(r[0])out[String(r[0])]=Number(r[1]||0);});return out;
 }
 function deleteOrder_(p){
-  const location=findOrderLocation_(p.id);if(!location)throw new Error('Pedido no encontrado: '+String(p.id||''));const sh=location.sheet,found={index:location.index,row:location.row};
-  sh.deleteRow(found.index);removeActiveProduction_(String(p.id));return {id:String(p.id),deleted:true};
+  throw new Error('La aplicación no puede eliminar pedidos en Google Sheets');
 }
 function normalizeStatus_(value){
   const status=String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  return status==='done'||status==='completado'?'done':status==='production'||status==='started'||status==='iniciado'||status==='en produccion'?'production':'pending';
+  return status==='done'||status==='completado'||status==='listo'?'done':status==='production'||status==='started'||status==='iniciado'||status==='en produccion'||status==='produciendo'?'production':'pending';
 }
 function parseColors_(value){try{const parsed=value?JSON.parse(String(value)):[];return Array.isArray(parsed)?Array.from(new Set(parsed)).slice(0,16):[];}catch(_){return [];}}
 function formatDate_(v){if(!v)return '';if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v))return Utilities.formatDate(v,PRODUCTION_TIMEZONE,'yyyy-MM-dd');return String(v);}
