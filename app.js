@@ -2868,7 +2868,7 @@ function renderBambuFarmV2(){
       .filter(item=>item.color&&((item.slot-1)%4===column)));
     return `<div class="bambu-card">
       <div class="bambu-card-head"><div><div class="dashboard-title">${esc(printer.name||"Bambu")}</div><strong>${esc(printer.model||"Bambu Lab")}</strong></div><span class="bambu-state ${state.toLowerCase()}">${state}</span></div>
-      <div class="bambu-job">${assignedOrder?`Pedido seleccionado: <strong>${esc(assignedOrder.design||assignedOrder.product||"Sin nombre")}</strong> (#${esc(assignedOrder.id)})`:esc(printer.job||"Sin trabajo activo")}</div>
+      <div class="bambu-job">${assignedOrder?`<strong>${esc(assignedOrder.design||assignedOrder.product||"Sin nombre")}</strong> (#${esc(assignedOrder.id)})`:"Sin pedido seleccionado"}</div>
       <div class="bambu-progress"><div style="width:${Math.max(0,Math.min(100,progress))}%"></div></div>
       <div class="bambu-meta"><span>${progress}%</span><span>Restante: ${remaining}</span></div>
       <div class="bambu-temperatures"><span>Nozzle <strong>${printer.nozzleTemperature===null?"-":printer.nozzleTemperature}°C</strong></span><span>Cama <strong>${printer.bedTemperature===null?"-":printer.bedTemperature}°C</strong></span></div>
