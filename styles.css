@@ -48,7 +48,7 @@ body{background:var(--bg);color:var(--text);transition:background .2s,color .2s}
 .production-3mf-summary>strong{border-left:1px solid #d5dce0;padding-left:8px}
 .production-3mf-error{color:#a11!important;font-size:12px}
 @media(max-width:650px){.production-3mf-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.production-3mf-summary>strong{border-left:0;padding-left:0}}
-.bambu-bottom-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(220px,.75fr);gap:14px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border-color);align-items:start}
+.bambu-bottom-grid{display:flex;flex-direction:column;gap:10px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border-color);align-items:stretch}.bambu-bottom-grid .bambu-filaments{margin-top:0}
 .bambu-production-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
 .bambu-production-controls label{display:flex;flex-direction:column;gap:4px;min-width:190px;color:var(--text-secondary);font-size:10px;font-weight:900;text-transform:uppercase}
 .bambu-order-select{height:31px;border:1px solid var(--border-color);border-radius:7px;background:var(--surface);color:var(--text-primary);padding:0 7px;font:inherit;text-transform:none}
@@ -56,8 +56,8 @@ body{background:var(--bg);color:var(--text);transition:background .2s,color .2s}
 .bambu-quantity-value{min-width:48px;text-align:center;font-size:12px;font-weight:900;color:var(--text-primary)}
 .bambu-quantity-controls button{height:31px;min-width:32px;padding:0 8px;border:1px solid var(--border-color);border-radius:7px;background:var(--button-background);color:var(--button-text);font-weight:900;cursor:pointer}
 .bambu-quantity-controls button:hover{border-color:var(--yellow)}
-@media(max-width:900px){.bambu-farm-card{grid-template-columns:1fr}}
-@media(max-width:700px){.bambu-bottom-grid{grid-template-columns:1fr;gap:8px}.bambu-filaments{margin-top:0}.bambu-order-bar{align-items:stretch;flex-direction:column}.bambu-order-select{width:100%}.bambu-selected-order{font-size:19px}}
+@media(max-width:650px){.bambu-farm-card{grid-template-columns:1fr}}
+@media(max-width:700px){.bambu-order-bar{align-items:stretch;flex-direction:column}.bambu-order-select{width:100%}}
 
 /* Manual filament configuration must remain light and readable in either theme. */
 .bambu-filament-modal .bambu-filament-card,
