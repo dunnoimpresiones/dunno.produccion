@@ -7,16 +7,7 @@
   GET  = leer pedidos
   POST = agregar / actualizar / eliminar
 
-  MÁQUINAS FIJAS
-  A1
-  A2
-  A3
-  A4
-  A5
-  A6
-  Amini
-  V3
-  CR10
+  Las máquinas de Granja 3D se mantienen locales al agente.
 */
 
 
@@ -39,19 +30,9 @@ const MACHINES_KEY =
   "dunno_produccion_maquinas_v2";
 
 
-const MACHINE_NAMES = [
-
-  "A1",
-  "A2",
-  "A3",
-  "A4",
-  "A5",
-  "A6",
-  "Amini",
-  "V3",
-  "CR10"
-
-];
+// No hay una lista explícita de máquinas de Granja 3D definida en el proyecto.
+// Las impresoras informadas por el agente se mantienen separadas de Google Sheets.
+const MACHINE_NAMES = [];
 
 const MACHINE_IMAGES_V2 = {
 };
@@ -1093,7 +1074,7 @@ function getOrdersFromAPI() {
           orders: Array.isArray(data.orders) ? data.orders : [],
           production: data.production || {},
           productionToday: Number(data.productionToday ?? data.productionTotal ?? 0),
-          machines: Array.isArray(data.machines) ? data.machines : []
+          machines: []
         });
       };
       window[callback] = data => {
@@ -1146,9 +1127,14 @@ async function syncFromSheets(
 
     const remoteOrders=Array.isArray(result) ? result : (result.orders || []);
     orders=remoteOrders.map(remote=>{
+      const done=Number(remote.done ?? remote.cantidadRealizada ?? 0);
+      const qty=Number(remote.qty ?? remote.cantidadPedida ?? 0);
+      const status=remote.status||remote.estadoNormalizado||remote.estado||"pending";
+      const normalizedStatus=/listo|done|completado/i.test(status)?"done":/produciendo|iniciado|production/i.test(status)?"production":"pending";
       const pending=pendingChangesV2[String(remote.id)];
       const local=pending||optimisticOrdersV2[String(remote.id)];
-      return local ? {...remote,done:local.done,status:local.status|| (Number(local.done)>=Number(remote.qty)?"done":Number(local.done)>0?"production":"pending")} : remote;
+      return local ? {...remote,qty,done:local.done,status:local.status||normalizedStatus,pending:Math.max(0,qty-local.done)} :
+        {...remote,qty,done,status:normalizedStatus,pending:Math.max(0,qty-done),design:remote.design||remote.diseño||"",client:remote.client||remote.nombre||"",date:remote.date||remote.fecha||""};
     });
 
     productionDailyV2 =
@@ -1160,18 +1146,6 @@ async function syncFromSheets(
       : 0;
     clearTimeout(sheetsRetryTimerV2);
     sheetsRetryTimerV2=null;
-
-    if(!Array.isArray(result) && Array.isArray(result.machines) && result.machines.length){
-      machines=result.machines.map((m,i)=>({id:i+1,name:MACHINE_NAMES[i],orderId:String(m.orderId||""),colors:Array.isArray(m.colors)?m.colors.slice(0,16):[]}));
-      machines=machines.map(machine=>{
-        const pending=pendingMachinesV2[String(machine.id)];
-        if(!pending)return machine;
-        let colors=[];
-        try{colors=JSON.parse(pending.colors||"[]")}catch(error){console.error("Colores pendientes inválidos:",error)}
-        return {...machine,orderId:pending.orderId,colors:Array.isArray(colors)?colors:[]};
-      });
-      saveMachines();
-    }
 
     saveCache();
 
@@ -1428,23 +1402,7 @@ window.testConnection = testConnection;
 // =====================================================
 
 function openOrderModal() {
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-
-  if (
-    modal
-  ) {
-
-    modal.classList
-      .remove(
-        "hidden"
-      );
-
-  }
+  alert("Los pedidos se crean manualmente en las hojas mensuales de Google Sheets.");
 
 }
 
@@ -1476,6 +1434,8 @@ function closeModal() {
 // =====================================================
 
 async function addOrder() {
+  alert("La aplicación no crea pedidos. Agregá el pedido en la hoja mensual correspondiente.");
+  return;
 
   const operationId = "op_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
@@ -1644,7 +1604,9 @@ async function setDone(
     );
 
 
+  const delta=newDone-Number(order.done||0);
   order.done=newDone;
+  order.pending=Math.max(0,Number(order.qty||0)-newDone);
   order.status=newDone>=Number(order.qty)?"done":newDone>0?"production":"pending";
   optimisticOrdersV2[String(order.id)]={done:newDone,status:order.status};
   saveCache();
@@ -1661,12 +1623,7 @@ async function setDone(
     });
   }
   render();
-  queueOrderChangeV2(order,productionContext);
-  if(order.status==="done"){
-    completedMachines.forEach(machine=>{
-      queueMachineChangeV2(machine);
-    });
-  }
+  queueProductionChangeV2(order,delta);
 
 }
 
@@ -1769,7 +1726,7 @@ function renderMachines() {
 // TARJETA DE MÁQUINA
 // =====================================================
 
-function renderMachineCard(machine) {
+function renderMachineCardLegacy(machine) {
   const order = orders.find(o => String(o.id) === String(machine.orderId));
   const active = !!order;
   const colors = (machine.colors || []).slice(0, 16);
@@ -1853,7 +1810,7 @@ function renderMachineCard(machine) {
 // RENDER GENERAL
 // =====================================================
 
-function render() {
+function renderLegacy() {
 
   installMachineStyles();
 
@@ -2617,6 +2574,20 @@ function queueOrderChangeV2(order,productionContext={}){
   showSyncStatusV2("🟡 Guardando...");
   schedulePendingFlushV2();
 }
+function queueProductionChangeV2(order,delta){
+  const key=String(order.id);
+  const previous=pendingChangesV2[key];
+  pendingChangesV2[key]={
+    id:order.id,
+    delta:Number(previous?.delta||0)+Number(delta||0),
+    status:order.status,
+    version:Date.now()+"-"+Math.random().toString(36).slice(2)
+  };
+  savingOrdersV2[key]=true;
+  savePendingChangesV2();
+  showSyncStatusV2("🟡 Guardando...");
+  schedulePendingFlushV2();
+}
 function queueMachineChangeV2(machine){
   console.info("[Sheets] Cambios de máquinas solo locales; no se envían a Google Sheets");
 }
@@ -2637,10 +2608,17 @@ async function flushPendingChangesV2(){
     let response;
     for(let attempt=0;attempt<delays.length;attempt++){
       if(delays[attempt])await wait(delays[attempt]);
-      try{response=await postAPI("updateBatch",{changes:JSON.stringify(batch.map(change=>({
-        id:change.id,
-        status:change.status
-      }))),machines:"[]",newOrders:"[]"});break}
+      try{
+        response=await postAPI("updateBatch",{changes:JSON.stringify(batch.filter(change=>Number(change.delta||0)!==0).map(change=>({
+          id:change.id,
+          delta:Number(change.delta)
+        })))});
+        if(!response?.ok)throw new Error("Google Apps Script no confirmó la producción");
+        for(const change of batch){
+          if(change.status)await postAPI("updateStatus",{id:change.id,status:change.status});
+        }
+        break;
+      }
       catch(error){if(attempt===delays.length-1)throw error}
     }
     if(!response?.ok)throw new Error("Google Apps Script no confirmó el lote");
