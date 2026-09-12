@@ -12,7 +12,8 @@ telemetría normalizada por WebSocket.
 5. Ejecutar `npm start`.
 
 El Agent escucha en `http://<ip-del-pc>:8787` y WebSocket en
-`ws://<ip-del-pc>:8787`. El frontend no recibe ni almacena credenciales MQTT.
+`ws://<ip-del-pc>:8787`. También sirve la aplicación web desde la raíz:
+`http://<ip-del-pc>:8787/`. El frontend no recibe ni almacena credenciales MQTT.
 
 Los colores asignados manualmente pueden fijarse para los slots 1 a 16 en
 `.env` con `BAMBU_01_SLOT_N_COLOR` y `BAMBU_01_SLOT_N_TYPE`. Esos valores

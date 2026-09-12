@@ -2998,11 +2998,11 @@ function renderWorkshopSidebarV3(){
   const r=document.getElementById("sidebarResumenV3");
   if(!p||!r)return;
   const active=machines.filter(m=>orders.some(o=>String(o.id)===String(m.orderId)&&o.status!=="done")).length;
-  const rows=orders.filter(o=>!isResolvedOrderV2(o)).slice(0,8);
+  const rows=orders.filter(o=>["pending","production"].includes(String(o.status||"").toLowerCase())).slice(0,8);
   p.innerHTML=rows.length?rows.map(o=>{
     const late=o.date && new Date(o.date)<new Date();
-    const label=o.status==="production"?"Produciendo":o.status==="done"?"Listo":"Pendiente";
-    return `<div class="side-order-row"><div><strong>${esc(o.design||"Sin diseño")}</strong><small>×${Number(o.qty)||0}</small></div><span class="side-status ${o.status}">${label}</span><em>${late?"Con demora":"En día"}</em></div>`;
+    const label=o.status==="production"?"Iniciado":"Pendiente";
+    return `<div class="side-order-row"><div><strong>${esc(o.design||"Sin diseño")}</strong><small>${Number(o.done)||0}/${Number(o.qty)||0} producidos</small></div><span class="side-status ${o.status}">${label}</span><em>${late?"Con demora":"En día"}</em></div>`;
   }).join(""):"<div class='side-empty'>No hay pedidos pendientes.</div>";
   const pending=orders.filter(o=>o.status!=="done").length;
   const production=orders.filter(o=>o.status==="production").length;
