@@ -97,20 +97,12 @@ function trackOrder_(p){
   const cols=getPedidoColumnIndexes_();
   const row=location.row;
   const cantidadPedida=Number(row[cols.cantidadPedida-1]||0);
-  const cantidadRealizada=Number(row[cols.cantidadRealizada-1]||0);
-  const estado=String(row[cols.estado-1]||'Pendiente');
+  const estado=String(row[cols.estado-1]||'Pendiente').trim()||'Pendiente';
   return {ok:true,order:{
     id:String(row[cols.id-1]||id),
-    date:formatDate_(row[cols.fecha-1]),
-    cliente:String(row[cols.nombre-1]||''),
-    diseño:String(row[cols.diseño-1]||''),
-    cantidadPedida:cantidadPedida,
-    cantidadRealizada:cantidadRealizada,
-    pendiente:Math.max(0,cantidadPedida-cantidadRealizada),
-    estado:normalizeStatus_(estado),
-    estadoText:String(row[cols.estado-1]||'Pendiente'),
-    total:Number(row[cols.total-1]||0),
-    seña:Number(row[cols.seña-1]||0)
+    cantidad:cantidadPedida,
+    estado:estado,
+    fechaAproximada:formatApproximateDate_(row[cols.fechaAprox-1])
   }};
 }
 function doPost(e){
@@ -422,5 +414,13 @@ function normalizeStatus_(value){
 }
 function parseColors_(value){try{const parsed=value?JSON.parse(String(value)):[];return Array.isArray(parsed)?Array.from(new Set(parsed)).slice(0,16):[];}catch(_){return [];}}
 function formatDate_(v){if(!v)return '';if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v))return Utilities.formatDate(v,PRODUCTION_TIMEZONE,'yyyy-MM-dd');return String(v);}
+function formatApproximateDate_(value){
+  if(!value)return '';
+  if(Object.prototype.toString.call(value)==='[object Date]'&&!isNaN(value)){
+    const monthNames=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    return Utilities.formatDate(value,PRODUCTION_TIMEZONE,'d')+' de '+monthNames[Number(Utilities.formatDate(value,PRODUCTION_TIMEZONE,'M'))-1];
+  }
+  return String(value).trim();
+}
 function errorMessage_(err){return err&&err.message?err.message:String(err);}
 function respond_(obj,callback){const text=JSON.stringify(obj);if(callback&&/^[A-Za-z_$][\w$]*$/.test(callback))return ContentService.createTextOutput(callback+'('+text+');').setMimeType(ContentService.MimeType.JAVASCRIPT);return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);}
