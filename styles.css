@@ -460,7 +460,7 @@ html,body{background:var(--background)!important;color:var(--text-primary)!impor
 .tracking-brand{font-size:24px;font-weight:900;letter-spacing:.1em;margin-bottom:18px}
 .tracking-brand span{font-size:12px;letter-spacing:.12em;color:#5d6870}
 .tracking-card{position:relative;background:#fff;border:1px solid #d5dce0;border-radius:16px;padding:28px;box-shadow:0 10px 35px rgba(0,0,0,.1)}
-.tracking-mascot{position:fixed;left:clamp(-170px,-9vw,-70px);bottom:-24px;width:auto;height:min(88vh,760px);max-width:none;object-fit:contain;object-position:bottom;pointer-events:none;z-index:0}
+.tracking-mascot{position:fixed;left:clamp(-50px,2vw,80px);bottom:-24px;width:auto;height:min(88vh,760px);max-width:none;object-fit:contain;object-position:bottom;pointer-events:none;z-index:0}
 .tracking-shell,.tracking-brand{position:relative;z-index:1}
 .tracking-card h1{margin:0 0 8px;font-size:25px}.tracking-card>p{margin:0 0 22px;color:#5d6870}
 .tracking-card label{display:block;font-size:12px;font-weight:800;text-transform:uppercase;margin-bottom:7px}
