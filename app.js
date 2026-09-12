@@ -2885,7 +2885,8 @@ function formatBambuMinutesV2(value){
 }
 function connectBambuAgentV2(){
   const queryAgent=new URLSearchParams(window.location.search).get("bambuAgent");
-  const host=window.DUNNO_BAMBU_AGENT_URL||queryAgent||`ws://${window.location.hostname||"localhost"}:8787`;
+  const protocol=window.location.protocol==="https:"?"wss:":"ws:";
+  const host=window.DUNNO_BAMBU_AGENT_URL||queryAgent||`${protocol}//${window.location.hostname}:8787`;
   try{
     bambuSocketV2=new WebSocket(host);
     bambuSocketV2.onmessage=event=>{
@@ -2986,7 +2987,7 @@ function render(){
   if(!list)return;
   list.innerHTML=filtered.length?filtered.map(o=>{
     const pct=o.qty?Math.round(Number(o.done)/Number(o.qty)*100):0;
-    return `<div class="order"><div class="order-main"><div><div class="order-title">#${esc(o.id)} · ${esc(o.design)} ×${o.qty}</div><div class="muted">${esc(o.client||"Sin cliente")}${o.date?" · entrega "+esc(o.date):""}</div></div><span class="badge ${o.priority==="high"?"high":""}">${o.status==="done"?"terminado":o.status==="production"?"produciendo":"pendiente"}</span></div><div class="progress"><div style="width:${pct}%"></div></div><div class="muted">${o.done}/${o.qty} producidos ${savingOrdersV2[String(o.id)]?`<span class="saving-dot">● Guardando...</span>`:""}</div><div class="order-actions">${[-5,-1,1,5,10].map(n=>`<button class="small-btn" onclick="setDone('${js(o.id)}',${n})">${n>0?"+":""}${n}</button>`).join("")}<button class="small-btn" onclick="setDone('${js(o.id)}','ALL')">Completar</button><button class="small-btn" onclick="removeOrder('${js(o.id)}')">Eliminar</button></div></div>`;
+    return `<div class="order"><div class="order-main"><div><div class="order-title">#${esc(o.id)} · ${esc(o.design)} ×${o.qty}</div><div class="muted">${esc(o.client||"Sin cliente")}${o.date?" · entrega "+esc(o.date):""}</div></div><span class="badge ${o.priority==="high"?"high":""}">${o.status==="done"?"terminado":o.status==="production"?"produciendo":"pendiente"}</span></div><div class="progress"><div style="width:${pct}%"></div></div><div class="muted">${o.done}/${o.qty} producidos ${savingOrdersV2[String(o.id)]?`<span class="saving-dot">● Guardando...</span>`:""}</div><div class="order-actions"><a class="small-btn tracking-link" href="seguimiento.html?id=${encodeURIComponent(o.id)}" target="_blank" rel="noopener">Seguimiento</a>${[-5,-1,1,5,10].map(n=>`<button class="small-btn" onclick="setDone('${js(o.id)}',${n})">${n>0?"+":""}${n}</button>`).join("")}<button class="small-btn" onclick="setDone('${js(o.id)}','ALL')">Completar</button><button class="small-btn" onclick="removeOrder('${js(o.id)}')">Eliminar</button></div></div>`;
   }).join(""):"<p class='muted'>No se encontraron pedidos.</p>";
 }
 
