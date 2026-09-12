@@ -1,7 +1,24 @@
 import "dotenv/config";
 import http from "node:http";
+import {fileURLToPath} from "node:url";
+import path from "node:path";
+import fs from "node:fs";
 import mqtt from "mqtt";
 import { WebSocketServer } from "ws";
+
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const MIME_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".manifest": "application/manifest+json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2"
+};
 
 const config = {
   host: process.env.AGENT_HOST || "0.0.0.0",
@@ -195,13 +212,38 @@ function connectPrinter(printer) {
 }
 
 const server = http.createServer((request, response) => {
-  if (request.url === "/health") {
+  const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+  if (requestUrl.pathname === "/health") {
     response.writeHead(200, {"Content-Type": "application/json"});
     response.end(JSON.stringify({ok: true, printers: [...states.values()]}));
     return;
   }
-  response.writeHead(404);
-  response.end();
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    response.writeHead(405, {"Content-Type": "text/plain; charset=utf-8"});
+    response.end("Method not allowed");
+    return;
+  }
+  const relativePath = requestUrl.pathname === "/" ? "index.html" : requestUrl.pathname.slice(1);
+  const filePath = path.resolve(appRoot, relativePath);
+  if (filePath !== appRoot && !filePath.startsWith(`${appRoot}${path.sep}`)) {
+    response.writeHead(403, {"Content-Type": "text/plain; charset=utf-8"});
+    response.end("Forbidden");
+    return;
+  }
+  fs.stat(filePath, (error, stats) => {
+    if (error || !stats.isFile()) {
+      response.writeHead(404, {"Content-Type": "text/plain; charset=utf-8"});
+      response.end("Not found");
+      return;
+    }
+    const contentType = MIME_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+    response.writeHead(200, {"Content-Type": contentType});
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+    fs.createReadStream(filePath).pipe(response);
+  });
 });
 const websocket = new WebSocketServer({server});
 websocket.on("connection", socket => {

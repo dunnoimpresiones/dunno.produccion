@@ -2885,7 +2885,8 @@ function formatBambuMinutesV2(value){
 }
 function connectBambuAgentV2(){
   const queryAgent=new URLSearchParams(window.location.search).get("bambuAgent");
-  const host=window.DUNNO_BAMBU_AGENT_URL||queryAgent||`ws://${window.location.hostname||"localhost"}:8787`;
+  const protocol=window.location.protocol==="https:"?"wss:":"ws:";
+  const host=window.DUNNO_BAMBU_AGENT_URL||queryAgent||`${protocol}//${window.location.hostname}:8787`;
   try{
     bambuSocketV2=new WebSocket(host);
     bambuSocketV2.onmessage=event=>{
