@@ -51,6 +51,8 @@
       try{const order=await queryOrder(input.value.trim());renderOrder(order);message.textContent=""}
       catch(error){message.textContent=error.message;message.className="tracking-message tracking-error"}
     });
+    const initialId=new URLSearchParams(window.location.search).get("id");
+    if(initialId){input.value=initialId;form.requestSubmit()}
   </script>
 </body>
 </html>
